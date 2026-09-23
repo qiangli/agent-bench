@@ -108,16 +108,19 @@ for i in $(seq 1 "$K"); do
         *s)     [ $el -ge "${trigger%s}" ] && fire=1 ;;
       esac
       if [ $fire = 1 ]; then
-        id=$(bashy chat sessions 2>/dev/null | awk -v p=$pid '$5 == p {print $1; exit}')
+        [ -z "$id" ] && id=$(bashy chat sessions 2>/dev/null | awk -v p=$pid '$5 == p {print $1; exit}')
         if [ -n "$id" ] && bashy chat steer "$id" "$(cat "$pack/steer.txt")" >/dev/null 2>&1; then
-          steered=1; last=$now; echo "  steered $AGENT $TASK#$i at ${el}s"
+          steered=1; last=$now; enters=0; echo "  steered $AGENT $TASK#$i at ${el}s"
         fi
       fi
-    elif [ -n "${id:-}" ] && [ ${enters:-0} -lt 4 ] && [ $((now - last)) -ge $((30 * (${enters:-0} + 1))) ]; then
-      # Some TUIs (Muse) drop Enter while busy and leave the steer unsent in the
-      # input box; a person would press Enter again once it went idle. A bare
-      # Enter on an empty input is a no-op for every agent, so it is safe.
-      bashy chat steer "$id" "" >/dev/null 2>&1; enters=$(( ${enters:-0} + 1 ))
+    fi
+    [ -z "$id" ] && id=$(bashy chat sessions 2>/dev/null | awk -v p=$pid '$5 == p {print $1; exit}')
+    if [ -n "$id" ] && [ $enters -lt 6 ] && [ $((now - last)) -ge $((30 * (enters + 1))) ]; then
+      # Some TUIs (Muse) drop an Enter that arrives while they are busy or still
+      # starting, leaving the prompt or the steer unsent in the input box; a
+      # person would press Enter again. A bare Enter on an empty input is a
+      # no-op for every agent, so it is safe to send after each quiet spell.
+      bashy chat steer "$id" "" >/dev/null 2>&1; enters=$((enters + 1))
     fi
     kill -0 $pid 2>/dev/null || { why=exited; break; }
     [ $el -ge "$BUDGET" ] && { why=budget; break; }
