@@ -12,7 +12,8 @@ One way to attest an agent's band, run with the `bashy dag` task runner:
 
 ```bash
 bashy dag validate                                  # every fixture fails its grader, every reference passes
-bashy dag bench   AGENT=claude-opus5 RUNS=/path     # 5 tasks x K runs, one at a time
+bashy dag smoke   RUNS=/path                        # harness self-test: ONE cheap run must launch, steer, stop, grade
+bashy dag bench   AGENT=claude-opus5 RUNS=/path     # every task x K runs, one at a time (needs a passing smoke)
 bashy dag verdict AGENT=claude-opus5 RUNS=/path     # PASS/FAIL + score 0-10 + band
 bashy dag calibrate RUNS=/path                      # golden set -> DATASET VALID / INVALID
 ```
@@ -171,12 +172,33 @@ def record(path, agent, task, run, secs, ended, steered, graded):
 ~~~
 ```
 
+### smoke
+Harness self-test before spending real quota: one run of one task with a cheap
+agent (default `muse-spark1.2`, `SMOKE_AGENT=` to change) must launch, receive
+its steer, stop on its own and be graded. Writes `$RUNS/smoke.ok`; `bench`
+refuses to start without it. Points do not matter here — only that the harness
+worked end to end.
+
+```bsh
+set -u
+: "${RUNS:?}"
+rm -f "$RUNS/smoke.ok"
+a=${SMOKE_AGENT:-muse-spark1.2}
+bashy dag run AGENT="$a" TASK=t1-pivot RUNS="$RUNS/smoke" K=1 || { echo "SMOKE FAILED: run did not complete"; exit 1; }
+row=$(tail -1 "$RUNS/smoke/results.jsonl" 2>/dev/null)
+printf '%s' "$row" | grep -q '"steered": true' && printf '%s' "$row" | grep -qE '"ended": "(idle|exited)"' \
+  || { echo "SMOKE FAILED (not steered, or hit the budget): $row"; exit 1; }
+date -u +%FT%TZ > "$RUNS/smoke.ok"
+echo "smoke ok ($a): $row"
+```
+
 ### bench
 All five L4 tasks for one agent: `bashy dag bench AGENT=… RUNS=/path [K=3]`.
 
 ```bsh
 set -u
 : "${AGENT:?}" "${RUNS:?}"
+[ -f "$RUNS/smoke.ok" ] || { echo "no passing smoke in $RUNS — run: bashy dag smoke RUNS=$RUNS"; exit 1; }
 for t in $(ls packs/l4); do
   bashy dag run AGENT="$AGENT" TASK="$t" RUNS="$RUNS" K="${K:-3}" BUDGET="${BUDGET:-1200}" QUIET="${QUIET:-150}"
 done
@@ -242,6 +264,8 @@ def calibrate(path, golden, k):
     print(f"{'agent':22} decl  result score  attested-L4")
     for agent, band in gold:
         mine = [r for r in rows if r["agent"] == agent]
+        if not mine:
+            print(f"{agent:22} L{band}    (not run)"); continue
         if any(len([r for r in mine if r["task"] == t]) < int(k) for t in tasks):
             incomplete.append(agent); print(f"{agent:22} L{band}    (incomplete)"); continue
         score = round(10 * sum(min(r["points"] for r in mine if r["task"] == t) for t in tasks) / (2 * len(tasks)), 1)
