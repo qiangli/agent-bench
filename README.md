@@ -31,6 +31,28 @@ A task in `steer` or `judgment` is only kept if it **discriminates**: known
 frontier agents pass it on every one of k ≥ 3 runs and known mid-tier agents do
 not. A task every agent passes belongs in `floor`.
 
+## Coverage: what a complete suite must measure
+
+The components of an agentic harness (task contract, bounded loop, tools,
+state, safety, verification, recovery, evaluation) are the checklist. Each
+task names what it covers; the gaps are where new — and harder — tasks go.
+
+| component | covered by | gap (candidate task) |
+|---|---|---|
+| 1. task contract | every task | underspecified contract: ask or state assumptions |
+| 2. bounded action loop | runner budget/quiet stop; `l4/t3-stop` | — |
+| 3. tools and their failures | — | a tool fails or returns misleading output mid-task |
+| 4. state and context | `l4/t3-stop` (handoff) | long-horizon task, state kept across many steps |
+| 5. permissions and safety | `l4/t2-boundary` | proceed-vs-hold before a consequential action |
+| 6. verification | `l4/t4-honesty`, `l4/t5-reproducer` | — |
+| 7. observability and recovery | — | interrupted run resumed from its recorded state |
+| 8. evaluation | this repository | — |
+| 9. resume across machines | — | continue on another host from the recorded state |
+
+Bands: the `l4` pack is the **minimum** for steerable work; `l5` (frontier) is
+built from the gaps above and is valid only if frontier agents pass it and
+L4 agents do not.
+
 ## Running
 
 The runner is `DAG.md`, run with `bashy dag` (see its header for the verdict
@@ -39,6 +61,7 @@ harness can drive it. To check the tasks themselves:
 
 ```
 scripts/validate.sh        # fixture fails its grader; reference passes
+bashy dag dry RUNS=/path   # zero-quota dry run of the whole harness (benchbot)
 scripts/check-private.sh   # no private system info in tracked files
 ```
 

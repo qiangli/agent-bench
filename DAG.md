@@ -12,7 +12,8 @@ One way to attest an agent's band, run with the `bashy dag` task runner:
 
 ```bash
 bashy dag validate                                  # every fixture fails its grader, every reference passes
-bashy dag smoke   RUNS=/path                        # harness self-test: ONE cheap run must launch, steer, stop, grade
+bashy dag dry     RUNS=/path                        # zero-quota dry run: benchbot on every task must grade 2, steers received
+bashy dag smoke   RUNS=/path                        # then ONE cheap real run must launch, steer, stop, grade
 bashy dag bench   AGENT=claude-opus5 RUNS=/path     # every task x K runs, one at a time (needs a passing smoke)
 bashy dag verdict AGENT=claude-opus5 RUNS=/path     # PASS/FAIL + score 0-10 + band
 bashy dag calibrate RUNS=/path                      # golden set -> DATASET VALID / INVALID
@@ -90,6 +91,7 @@ pack=$PWD/packs/l4/$TASK
 mkdir -p "$RUNS"
 
 sig() { git -C "$1" rev-parse HEAD 2>/dev/null; git -C "$1" status --porcelain 2>/dev/null; }
+VOID_RE='rate_limit_error|[Qq]uota exhausted|[Uu]sage limit|billing_error|overloaded_error|hit your limit|insufficient_quota'
 
 for i in $(seq 1 "$K"); do
   ws=$RUNS/$AGENT/$TASK/$i
@@ -97,7 +99,9 @@ for i in $(seq 1 "$K"); do
   cp -R "$pack/fixture/." "$ws/"
   (cd "$ws" && git init -q -b main && git add -A && git -c user.name=bench -c user.email=bench@example.invalid commit -qm fixture)
 
-  BASHY_CHAT_INBOX=off BASHY_ALLOW_UNSAFE_AGENT_LAUNCH=1 \
+  # Only the zero-quota dry-run agent may see the reference solution.
+  ref=; [ "$AGENT" = benchbot-dry ] && ref=$pack/reference
+  BENCH_REF=$ref BASHY_CHAT_INBOX=off BASHY_ALLOW_UNSAFE_AGENT_LAUNCH=1 \
     bashy chat --agent "$AGENT" -i --yolo -m "Read TASK.md and do the task." \
       --cwd "$ws" --task "bench-$TASK-$i" --timeout "$((BUDGET + 60))s" \
       > "$ws.session.log" 2>&1 &
@@ -151,6 +155,20 @@ for i in $(seq 1 "$K"); do
     sleep 1
   done
 
+  # Keep the agent's screen, and VOID the run if the provider refused to work
+  # (rate limit, quota, billing, overload): that measures the account, not the
+  # agent. A void run is never scored, and it ends this agent's bench.
+  if [ -n "$id" ]; then
+    scr=$HOME/.bashy/sessions/logs/$(printf '%s' "$id" | shasum -a 256 | cut -c1-12).log
+    [ -f "$scr" ] && cp "$scr" "$ws.screen.log"
+  fi
+  void=$(grep -aoE "$VOID_RE" "$ws.screen.log" 2>/dev/null | head -1)
+  if [ -n "$void" ]; then
+    grade.record "$RUNS/results.jsonl" "$AGENT" "$TASK" "$i" "$(( $(date +%s) - start ))" void "$steered" \
+      "{\"points\": 0, \"fail\": false, \"void\": true, \"why\": \"void: provider refused ($void)\"}"
+    echo "  VOID $AGENT $TASK#$i: provider refused ($void) — stopping this agent's bench" >&2
+    exit 3
+  fi
   g=$(python3 "$pack/grader/grade.py" "$ws" "$pack/fixture" 2>&1 | tail -1)
   grade.record "$RUNS/results.jsonl" "$AGENT" "$TASK" "$i" "$(( $(date +%s) - start ))" "$why" "$steered" "$g"
 done
@@ -170,6 +188,30 @@ def record(path, agent, task, run, secs, ended, steered, graded):
     print(f"  {agent} {task}#{run}: {row['points']} pts{' FAIL' if row['fail'] else ''} ({ended}, {secs}s) {row['why']}")
     return 0
 ~~~
+```
+
+### dry
+Zero-quota dry run of the whole harness: `benchbot-dry` (a stand-in agent that
+calls no model — `scripts/benchbot.py`, registered once with the commands in its
+docstring) runs every task once through the same `bashy chat -i` path and
+applies the reference solution. PASS only if every task grades 2 and every
+steered task shows "benchbot: steer received" in its git log.
+
+```bsh
+set -u
+: "${RUNS:?}"
+d=$RUNS/dry; rm -rf "$d"; rc=0
+for t in $(ls packs/l4); do
+  bashy dag run AGENT=benchbot-dry TASK="$t" RUNS="$d" K=1 QUIET=15 BUDGET=180 >/dev/null 2>&1 || { echo "DRY FAIL $t: run did not complete"; rc=1; continue; }
+  row=$(grep "\"task\": \"$t\"" "$d/results.jsonl" | tail -1)
+  printf '%s' "$row" | grep -q '"points": 2' || { echo "DRY FAIL $t: $row"; rc=1; continue; }
+  if [ -f "packs/l4/$t/steer.txt" ] && ! git -C "$d/benchbot-dry/$t/1" log --format=%s | grep -q 'steer received'; then
+    echo "DRY FAIL $t: steer never reached the agent"; rc=1; continue
+  fi
+  echo "dry ok   $t"
+done
+[ $rc = 0 ] && date -u +%FT%TZ > "$RUNS/dry.ok"
+exit $rc
 ```
 
 ### smoke
@@ -201,6 +243,7 @@ set -u
 [ -f "$RUNS/smoke.ok" ] || { echo "no passing smoke in $RUNS — run: bashy dag smoke RUNS=$RUNS"; exit 1; }
 for t in $(ls packs/l4); do
   bashy dag run AGENT="$AGENT" TASK="$t" RUNS="$RUNS" K="${K:-3}" BUDGET="${BUDGET:-1200}" QUIET="${QUIET:-150}"
+  grep -q "\"agent\": \"$AGENT\".*\"void\": true" "$RUNS/results.jsonl" 2>/dev/null && { echo "VOID: $AGENT stopped (provider refused); rerun later"; break; }
 done
 bashy dag verdict AGENT="$AGENT" RUNS="$RUNS"
 ```
@@ -219,7 +262,7 @@ def verdict(path, agent, k):
     import json
     import os
     tasks = sorted(d for d in os.listdir("packs/l4") if os.path.isdir(os.path.join("packs/l4", d)))
-    rows = [json.loads(l) for l in open(path) if l.strip()]
+    rows = [r for r in (json.loads(l) for l in open(path) if l.strip()) if not r.get("void")]
     agents = sorted({r["agent"] for r in rows}) if agent == "all" else [agent]
     for a in agents:
         mine = [r for r in rows if r["agent"] == a]
@@ -258,7 +301,7 @@ def calibrate(path, golden, k):
     import json
     import os
     tasks = sorted(d for d in os.listdir("packs/l4") if os.path.isdir(os.path.join("packs/l4", d)))
-    rows = [json.loads(l) for l in open(path) if l.strip()]
+    rows = [r for r in (json.loads(l) for l in open(path) if l.strip()) if not r.get("void")]
     gold = [l.split() for l in open(golden) if l.strip() and not l.startswith("#")]
     bad, incomplete = [], []
     print(f"{'agent':22} decl  result score  attested-L4")
