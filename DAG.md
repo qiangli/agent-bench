@@ -127,8 +127,17 @@ for i in $(seq 1 "$K"); do
     echo "  LAUNCH FAILED $AGENT $TASK#$i — not scored; see $ws.session.log" >&2
     tail -5 "$ws.session.log" >&2; exit 1
   fi
-  kill -INT $pid 2>/dev/null; for _ in 1 2 3 4 5 6; do kill -0 $pid 2>/dev/null || break; sleep 1; done
-  kill -TERM $pid 2>/dev/null
+  # End the session and make sure it is GONE before the next run: an agent is
+  # one identity, so a lingering session refuses the next launch. Some TUIs ask
+  # for a second Ctrl-C, hence INT twice, then TERM, then KILL.
+  for sig in INT INT TERM KILL; do
+    kill -$sig $pid 2>/dev/null || break
+    for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 $pid 2>/dev/null || break 2; sleep 1; done
+  done
+  for _ in $(seq 1 20); do
+    bashy chat sessions 2>/dev/null | awk -v p=$pid '$5 == p {f=1} END {exit !f}' || break
+    sleep 1
+  done
 
   g=$(python3 "$pack/grader/grade.py" "$ws" "$pack/fixture" 2>&1 | tail -1)
   grade.record "$RUNS/results.jsonl" "$AGENT" "$TASK" "$i" "$(( $(date +%s) - start ))" "$why" "$steered" "$g"
