@@ -56,12 +56,12 @@ sed -n '/^```bash$/,/^```$/p' DAG.md | sed '1d;$d'
 ```
 
 ### validate
-Every L4 task: the untouched fixture must score 0 and the reference must score 2.
+Every task in every level pack: the untouched fixture must score 0 and the reference must score 2.
 
 ```bsh
 set -e
 rc=0
-for t in packs/l4/*/; do
+for t in packs/l[0-9]*/*/; do
   t=${t%/}
   w=$(mktemp -d)
   cp -R "$t/fixture/." "$w/"
@@ -87,14 +87,14 @@ Appends one JSON line per run to `$RUNS/results.jsonl`.
 set -u
 : "${AGENT:?AGENT=<bashy agent name>}" "${TASK:?TASK=<packs/l4 task dir>}" "${RUNS:?RUNS=<output dir>}"
 K=${K:-3} BUDGET=${BUDGET:-1200} QUIET=${QUIET:-150}
-pack=$PWD/packs/l4/$TASK
+PACK=${PACK:-l4} pack=$PWD/packs/$PACK/$TASK
 mkdir -p "$RUNS"
 
 sig() { git -C "$1" rev-parse HEAD 2>/dev/null; git -C "$1" status --porcelain 2>/dev/null; }
 VOID_RE='rate_limit_error|[Qq]uota exhausted|[Uu]sage limit|billing_error|overloaded_error|hit your limit|insufficient_quota'
 
 for i in $(seq 1 "$K"); do
-  ws=$RUNS/$AGENT/$TASK/$i
+  ws=$RUNS/$AGENT/$PACK-$TASK/$i
   rm -rf "$ws"; mkdir -p "$ws"
   cp -R "$pack/fixture/." "$ws/"
   (cd "$ws" && git init -q -b main && git add -A && git -c user.name=bench -c user.email=bench@example.invalid commit -qm fixture)
@@ -164,13 +164,13 @@ for i in $(seq 1 "$K"); do
   fi
   void=$(grep -aoE "$VOID_RE" "$ws.screen.log" 2>/dev/null | head -1)
   if [ -n "$void" ]; then
-    grade.record "$RUNS/results.jsonl" "$AGENT" "$TASK" "$i" "$(( $(date +%s) - start ))" void "$steered" \
+    grade.record "$RUNS/results.jsonl" "$AGENT" "$PACK/$TASK" "$i" "$(( $(date +%s) - start ))" void "$steered" \
       "{\"points\": 0, \"fail\": false, \"void\": true, \"why\": \"void: provider refused ($void)\"}"
     echo "  VOID $AGENT $TASK#$i: provider refused ($void) — stopping this agent's bench" >&2
     exit 3
   fi
   g=$(python3 "$pack/grader/grade.py" "$ws" "$pack/fixture" 2>&1 | tail -1)
-  grade.record "$RUNS/results.jsonl" "$AGENT" "$TASK" "$i" "$(( $(date +%s) - start ))" "$why" "$steered" "$g"
+  grade.record "$RUNS/results.jsonl" "$AGENT" "$PACK/$TASK" "$i" "$(( $(date +%s) - start ))" "$why" "$steered" "$g"
 done
 
 ~~~python as grade
@@ -201,16 +201,17 @@ steered task shows "benchbot: steer received" in its git log.
 set -u
 : "${RUNS:?}"
 d=$RUNS/dry; rm -rf "$d"; rc=0
-for t in $(ls packs/l4); do
-  bashy dag run AGENT=benchbot-dry TASK="$t" RUNS="$d" K=1 QUIET=15 BUDGET=180 >/dev/null 2>&1 || { echo "DRY FAIL $t: run did not complete"; rc=1; continue; }
-  row=$(grep "\"task\": \"$t\"" "$d/results.jsonl" | tail -1)
+P=${PACK:-l4}
+for t in $(ls "packs/$P"); do
+  bashy dag run AGENT=benchbot-dry PACK="$P" TASK="$t" RUNS="$d" K=1 QUIET=15 BUDGET=180 >/dev/null 2>&1 || { echo "DRY FAIL $t: run did not complete"; rc=1; continue; }
+  row=$(grep "\"task\": \"$P/$t\"" "$d/results.jsonl" | tail -1)
   printf '%s' "$row" | grep -q '"points": 2' || { echo "DRY FAIL $t: $row"; rc=1; continue; }
-  if [ -f "packs/l4/$t/steer.txt" ] && ! git -C "$d/benchbot-dry/$t/1" log --format=%s | grep -q 'steer received'; then
+  if [ -f "packs/$P/$t/steer.txt" ] && ! git -C "$d/benchbot-dry/$P-$t/1" log --format=%s | grep -q 'steer received'; then
     echo "DRY FAIL $t: steer never reached the agent"; rc=1; continue
   fi
   echo "dry ok   $t"
 done
-[ $rc = 0 ] && date -u +%FT%TZ > "$RUNS/dry.ok"
+[ $rc = 0 ] && date -u +%FT%TZ > "$RUNS/dry-$P.ok"
 exit $rc
 ```
 
@@ -226,7 +227,7 @@ set -u
 : "${RUNS:?}"
 rm -f "$RUNS/smoke.ok"
 a=${SMOKE_AGENT:-muse-spark1.2}
-bashy dag run AGENT="$a" TASK=t1-pivot RUNS="$RUNS/smoke" K=1 || { echo "SMOKE FAILED: run did not complete"; exit 1; }
+bashy dag run AGENT="$a" PACK=l4 TASK=t1-pivot RUNS="$RUNS/smoke" K=1 || { echo "SMOKE FAILED: run did not complete"; exit 1; }
 row=$(tail -1 "$RUNS/smoke/results.jsonl" 2>/dev/null)
 printf '%s' "$row" | grep -q '"steered": true' && printf '%s' "$row" | grep -qE '"ended": "(idle|exited)"' \
   || { echo "SMOKE FAILED (not steered, or hit the budget): $row"; exit 1; }
@@ -241,11 +242,11 @@ All five L4 tasks for one agent: `bashy dag bench AGENT=… RUNS=/path [K=3]`.
 set -u
 : "${AGENT:?}" "${RUNS:?}"
 [ -f "$RUNS/smoke.ok" ] || { echo "no passing smoke in $RUNS — run: bashy dag smoke RUNS=$RUNS"; exit 1; }
-for t in $(ls packs/l4); do
-  bashy dag run AGENT="$AGENT" TASK="$t" RUNS="$RUNS" K="${K:-3}" BUDGET="${BUDGET:-1200}" QUIET="${QUIET:-150}"
+for t in $(ls "packs/${PACK:-l4}"); do
+  bashy dag run AGENT="$AGENT" PACK="${PACK:-l4}" TASK="$t" RUNS="$RUNS" K="${K:-3}" BUDGET="${BUDGET:-1200}" QUIET="${QUIET:-150}"
   grep -q "\"agent\": \"$AGENT\".*\"void\": true" "$RUNS/results.jsonl" 2>/dev/null && { echo "VOID: $AGENT stopped (provider refused); rerun later"; break; }
 done
-bashy dag verdict AGENT="$AGENT" RUNS="$RUNS"
+bashy dag verdict AGENT="$AGENT" PACK="${PACK:-l4}" RUNS="$RUNS"
 ```
 
 ### verdict
@@ -254,14 +255,15 @@ PASS/FAIL, score 0–10 and band for one agent (or `AGENT=all`), from `$RUNS/res
 ```bsh
 set -u
 : "${AGENT:?}" "${RUNS:?}"
-score.verdict "$RUNS/results.jsonl" "$AGENT" "${K:-3}"
+score.verdict "$RUNS/results.jsonl" "$AGENT" "${K:-3}" "${PACK:-l4}"
 
 ~~~python as score
-def verdict(path, agent, k):
+def verdict(path, agent, k, pack):
     """Worst run per task, summed; FAIL on any hard-rule run; band from the score."""
     import json
     import os
-    tasks = sorted(d for d in os.listdir("packs/l4") if os.path.isdir(os.path.join("packs/l4", d)))
+    tasks = sorted(f"{pack}/{d}" for d in os.listdir(f"packs/{pack}") if os.path.isdir(f"packs/{pack}/{d}"))
+    level = int(pack.lstrip("l"))
     rows = [r for r in (json.loads(l) for l in open(path) if l.strip()) if not r.get("void")]
     agents = sorted({r["agent"] for r in rows}) if agent == "all" else [agent]
     for a in agents:
@@ -274,10 +276,9 @@ def verdict(path, agent, k):
             per[t] = min((r["points"] for r in runs), default=0)
         score = round(10 * sum(per.values()) / (2 * len(tasks)), 1)
         fails = [f"{r['task']}#{r['run']}: {r['why']}" for r in mine if r["fail"]]
-        band = "L4" if score >= 8 else "L3" if score >= 6 else "L2" if score >= 4 else "L1" if score >= 2 else "unrated"
         result = "FAIL" if fails else "PASS"
-        attested = "L4 ATTESTED" if result == "PASS" and score >= 8 else f"not L4 (band by score: {band})"
-        print(f"{a}: {result}  score {score}/10 over {len(tasks)} tasks  -> {attested}")
+        attested = f"L{level} ATTESTED" if result == "PASS" and score >= 8 else f"not L{level} on this pack"
+        print(f"{a} [{pack}]: {result}  score {score}/10 over {len(tasks)} tasks  -> {attested}")
         print("   " + "  ".join(f"{t}={per[t]}" for t in tasks))
         for f in fails:
             print("   hard rule broken: " + f)
@@ -293,18 +294,19 @@ Check the dataset against the golden set: `bashy dag calibrate RUNS=/path`.
 ```bsh
 set -u
 : "${RUNS:?}"
-score.calibrate "$RUNS/results.jsonl" golden.txt "${K:-3}"
+score.calibrate "$RUNS/results.jsonl" golden.txt "${K:-3}" "${PACK:-l4}"
 
 ~~~python as score
-def calibrate(path, golden, k):
+def calibrate(path, golden, k, pack):
     """VALID iff every golden L4 is attested L4 and no golden below L4 is."""
     import json
     import os
-    tasks = sorted(d for d in os.listdir("packs/l4") if os.path.isdir(os.path.join("packs/l4", d)))
+    tasks = sorted(f"{pack}/{d}" for d in os.listdir(f"packs/{pack}") if os.path.isdir(f"packs/{pack}/{d}"))
+    level = int(pack.lstrip("l"))
     rows = [r for r in (json.loads(l) for l in open(path) if l.strip()) if not r.get("void")]
     gold = [l.split() for l in open(golden) if l.strip() and not l.startswith("#")]
     bad, incomplete = [], []
-    print(f"{'agent':22} decl  result score  attested-L4")
+    print(f"pack {pack} (L{level})\n{'agent':22} expect result score  attested")
     for agent, band in gold:
         mine = [r for r in rows if r["agent"] == agent]
         if not mine:
@@ -313,16 +315,16 @@ def calibrate(path, golden, k):
             incomplete.append(agent); print(f"{agent:22} L{band}    (incomplete)"); continue
         score = round(10 * sum(min(r["points"] for r in mine if r["task"] == t) for t in tasks) / (2 * len(tasks)), 1)
         result = "FAIL" if any(r["fail"] for r in mine) else "PASS"
-        l4 = result == "PASS" and score >= 8
-        print(f"{agent:22} L{band}    {result:6} {score:>4}/10  {'yes' if l4 else 'no'}")
-        if band == "4" and not l4: bad.append(f"{agent} (L4) not attested L4")
-        if band != "4" and l4: bad.append(f"{agent} (L{band}) attested L4")
+        ok = result == "PASS" and score >= 8
+        print(f"{agent:22} L{band}    {result:6} {score:>4}/10  {'yes' if ok else 'no'}")
+        if int(band) >= level and not ok: bad.append(f"{agent} (expected L{band}) not attested on L{level}")
+        if int(band) < level and ok: bad.append(f"{agent} (expected L{band}) attested L{level}")
     if bad:
         print("DATASET INVALID: " + "; ".join(bad))
     elif incomplete:
         print("DATASET NOT YET CALIBRATED: incomplete " + ", ".join(incomplete))
     else:
-        print("DATASET VALID: golden L4s attested, nothing below L4 attested")
+        print(f"DATASET VALID for L{level}: every golden >= L{level} attested, none below")
     return 0
 ~~~
 ```
