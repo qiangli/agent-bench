@@ -94,6 +94,7 @@ sig() { git -C "$1" rev-parse HEAD 2>/dev/null; git -C "$1" status --porcelain 2
 VOID_RE='rate_limit_error|[Qq]uota exhausted|[Uu]sage limit|billing_error|overloaded_error|hit your limit|insufficient_quota|invalid_request_error|model is not supported'
 
 for i in $(seq 1 "$K"); do
+ for attempt in 1 2; do
   ws=$RUNS/$AGENT/$PACK-$TASK/$i
   rm -rf "$ws"; mkdir -p "$ws"
   cp -R "$pack/fixture/." "$ws/"
@@ -133,15 +134,20 @@ for i in $(seq 1 "$K"); do
       # starting, leaving the prompt or the steer unsent in the input box; a
       # person would press Enter again. A bare Enter on an empty input is a
       # no-op for every agent, so it is safe to send after each quiet spell.
-      bashy chat steer "$id" "" >/dev/null 2>&1; enters=$((enters + 1))
+      bashy chat steer "$id" --enter >/dev/null 2>&1; enters=$((enters + 1))
     fi
     kill -0 $pid 2>/dev/null || { why=exited; break; }
     [ $el -ge "$BUDGET" ] && { why=budget; break; }
     [ $steered = 1 ] && [ $el -ge 60 ] && [ $((now - last)) -ge "$QUIET" ] && break
   done
   if [ $why = exited ] && [ $el -lt 30 ]; then
-    echo "  LAUNCH FAILED $AGENT $TASK#$i — not scored; see $ws.session.log" >&2
-    tail -5 "$ws.session.log" >&2; exit 1
+    # A session that dies at startup (e.g. a first-run trust dialog swallowed
+    # the prompt) never reached the model: retry once, never score it.
+    echo "  LAUNCH FAILED $AGENT $TASK#$i (attempt $attempt) — not scored; see $ws.session.log" >&2
+    tail -5 "$ws.session.log" >&2
+    for _ in $(seq 1 20); do bashy chat sessions 2>/dev/null | awk -v p=$pid '$5 == p {f=1} END {exit !f}' || break; sleep 1; done
+    [ $attempt = 2 ] && exit 1
+    continue
   fi
   # End the session and make sure it is GONE before the next run: an agent is
   # one identity, so a lingering session refuses the next launch. Some TUIs ask
@@ -162,7 +168,7 @@ for i in $(seq 1 "$K"); do
     scr=$HOME/.bashy/sessions/logs/$(printf '%s' "$id" | shasum -a 256 | cut -c1-12).log
     [ -f "$scr" ] && cp "$scr" "$ws.screen.log"
   fi
-  void=$(grep -aoE "$VOID_RE" "$ws.screen.log" 2>/dev/null | head -1)
+  void=$(grade.find "$ws.screen.log" "$VOID_RE")
   if [ -n "$void" ]; then
     grade.record "$RUNS/results.jsonl" "$AGENT" "$PACK/$TASK" "$i" "$(( $(date +%s) - start ))" void "$steered" \
       "{\"points\": 0, \"fail\": false, \"void\": true, \"why\": \"void: provider refused ($void)\"}"
@@ -171,9 +177,23 @@ for i in $(seq 1 "$K"); do
   fi
   g=$(python3 "$pack/grader/grade.py" "$ws" "$pack/fixture" 2>&1 | tail -1)
   grade.record "$RUNS/results.jsonl" "$AGENT" "$PACK/$TASK" "$i" "$(( $(date +%s) - start ))" "$why" "$steered" "$g"
+  break
+ done
 done
 
 ~~~python as grade
+def find(path, pattern):
+    """Print the first match of a regex in a (binary-ish) screen capture."""
+    import re
+    try:
+        text = open(path, "rb").read().decode("utf-8", "replace")
+    except OSError:
+        return 0
+    m = re.search(pattern, text)
+    if m:
+        print(m.group(0))
+    return 0
+
 def record(path, agent, task, run, secs, ended, steered, graded):
     """Append one run's grade (the grader's JSON) with its context."""
     import json
@@ -203,16 +223,33 @@ set -u
 d=$RUNS/dry; rm -rf "$d"; rc=0
 P=${PACK:-l4}
 for t in $(ls "packs/$P"); do
-  bashy dag run AGENT=benchbot-dry PACK="$P" TASK="$t" RUNS="$d" K=1 QUIET=15 BUDGET=180 >/dev/null 2>&1 || { echo "DRY FAIL $t: run did not complete"; rc=1; continue; }
+  bashy dag run AGENT=benchbot-dry PACK="$P" TASK="$t" RUNS="$d" K=1 QUIET=45 BUDGET=240 >/dev/null 2>&1 || { echo "DRY FAIL $t: run did not complete"; rc=1; continue; }
   row=$(grep "\"task\": \"$P/$t\"" "$d/results.jsonl" | tail -1)
   printf '%s' "$row" | grep -q '"points": 2' || { echo "DRY FAIL $t: $row"; rc=1; continue; }
   if [ -f "packs/$P/$t/steer.txt" ] && ! git -C "$d/benchbot-dry/$P-$t/1" log --format=%s | grep -q 'steer received'; then
     echo "DRY FAIL $t: steer never reached the agent"; rc=1; continue
   fi
+  if [ -z "$(scan.find "$d/benchbot-dry/$P-$t/1.screen.log" 'benchbot: enter received')" ]; then
+    echo "DRY FAIL $t: the runner's Enter never reached the agent"; rc=1; continue
+  fi
   echo "dry ok   $t"
 done
 [ $rc = 0 ] && date -u +%FT%TZ > "$RUNS/dry-$P.ok"
 exit $rc
+
+~~~python as scan
+def find(path, pattern):
+    """Print the first regex match in a screen capture (no grep -a in pure-Go grep)."""
+    import re
+    try:
+        text = open(path, "rb").read().decode("utf-8", "replace")
+    except OSError:
+        return 0
+    m = re.search(pattern, text)
+    if m:
+        print(m.group(0))
+    return 0
+~~~
 ```
 
 ### smoke

@@ -40,6 +40,7 @@ def main():
     for line in sys.stdin:
         text = line.strip()
         if not text:
+            print("benchbot: enter received", flush=True)
             continue
         if not prompted:
             prompted = True
