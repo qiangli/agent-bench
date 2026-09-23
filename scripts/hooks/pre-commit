@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Block commits that leak private system info (see CONTRIBUTING.md).
+# Enable once per clone: git config core.hooksPath scripts/hooks
+exec "$(git rev-parse --show-toplevel)/scripts/check-private.sh"

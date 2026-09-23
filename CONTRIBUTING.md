@@ -18,7 +18,9 @@ New tasks are welcome — they are data, not code.
 - **Private system information**: real hostnames, IP addresses, user names,
   e-mail addresses, home directories or absolute local paths, tokens or keys.
   Use placeholders (`host-a`, `user`, `/workspace`, `example.invalid`).
-  `scripts/check-private.sh` must pass.
+  `scripts/check-private.sh` must pass; enable it as a pre-commit hook once
+  per clone with `git config core.hooksPath scripts/hooks`. Never commit
+  generated files (`__pycache__`, `*.pyc`): they embed absolute local paths.
 - **Material under a non-permissive license.** Contributions are MIT. Do not
   copy code, fixtures, prompts or test suites from GPL/AGPL/LGPL/SSPL/BUSL,
   "non-commercial", or unlicensed sources, or from other benchmarks unless
