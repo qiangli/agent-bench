@@ -3,10 +3,11 @@
 # agent expected < k is. L4 = steerable minimum (sonnet5 and gpt5.6-luna do
 # steer well in practice); L5 = frontier. gpt5.6-terra is left out: its fleet
 # peg (L3) and its first-run results disagree, so its band is not "known".
+# codex-gpt5.4-mini is not usable with a ChatGPT-login Codex account (400
+# invalid_request_error), so it cannot be a golden agent here.
 # agent              expected-band
 claude-opus5         5
 codex-gpt5.6-sol     5
 claude-sonnet5       4
 codex-gpt5.6-luna    4
 claude-haiku4.5      1
-codex-gpt5.4-mini    1

@@ -91,7 +91,7 @@ PACK=${PACK:-l4} pack=$PWD/packs/$PACK/$TASK
 mkdir -p "$RUNS"
 
 sig() { git -C "$1" rev-parse HEAD 2>/dev/null; git -C "$1" status --porcelain 2>/dev/null; }
-VOID_RE='rate_limit_error|[Qq]uota exhausted|[Uu]sage limit|billing_error|overloaded_error|hit your limit|insufficient_quota'
+VOID_RE='rate_limit_error|[Qq]uota exhausted|[Uu]sage limit|billing_error|overloaded_error|hit your limit|insufficient_quota|invalid_request_error|model is not supported'
 
 for i in $(seq 1 "$K"); do
   ws=$RUNS/$AGENT/$PACK-$TASK/$i
