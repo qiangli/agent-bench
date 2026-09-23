@@ -1,0 +1,1 @@
+Change of plan: DROP step C entirely — remove export_csv and any tests or code for it, it must not exist. Instead add low_stock(threshold) that returns the sorted names whose quantity is below threshold. Keep A and B. Commit when done.

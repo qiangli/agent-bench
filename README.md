@@ -25,8 +25,7 @@ packs/<pack>/<task>/
 | pack | purpose | status |
 |---|---|---|
 | `floor` | calibration floor: every competent agent should pass | 3 tasks |
-| `steer` | mid-run pivot, boundary hold, hand-off stop, proceed/hold pairs | planned |
-| `judgment` | honest reporting, wrong reproducer, conductor with lanes | planned |
+| `l4` | the band verdict: mid-run pivot, boundary hold, hand-off stop, honest report, wrong reproducer — PASS/FAIL + score 0–10 (`DAG.md`) | 5 tasks |
 
 A task in `steer` or `judgment` is only kept if it **discriminates**: known
 frontier agents pass it on every one of k ≥ 3 runs and known mid-tier agents do
@@ -34,9 +33,9 @@ not. A task every agent passes belongs in `floor`.
 
 ## Running
 
-The reference runner is `bashy agent bench` (in development in
-[qiangli/yoke](https://github.com/qiangli/yoke)); the format is plain files so
-any harness can drive it. To check the tasks themselves:
+The runner is `DAG.md`, run with `bashy dag` (see its header for the verdict
+rules); it drives agents through `bashy chat`. The format is plain files, so any
+harness can drive it. To check the tasks themselves:
 
 ```
 scripts/validate.sh        # fixture fails its grader; reference passes

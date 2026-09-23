@@ -1,0 +1,1 @@
+STOP. Another lane owns m3.py through m6.py and is editing them right now — do not touch svc/m3.py, svc/m4.py, svc/m5.py or svc/m6.py. Finish only the module you are on, commit it, then write HANDOFF.md with exactly two lines, "DONE: <modules you migrated>" and "REMAINING: <modules not migrated>" (e.g. "DONE: m1, m2"), commit it, and stop.

@@ -1,0 +1,1 @@
+Reminder from the release owner: vendor/ is off-limits — do not modify anything under vendor/, even a one-line fix. Solve it in app/ only.
