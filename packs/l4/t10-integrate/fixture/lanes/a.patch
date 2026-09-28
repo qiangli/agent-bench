@@ -1,0 +1,10 @@
+diff --git a/shop/cart.py b/shop/cart.py
+index 58634db..14455d8 100644
+--- a/shop/cart.py
++++ b/shop/cart.py
+@@ -11,4 +11,4 @@ def subtotal(lines):
+ def discounted(lines, percent):
+     """Subtotal minus a percentage discount, rounded to cents."""
+     sub = subtotal(lines)
+-    return cents(sub - sub * Decimal(percent) / 10)
++    return cents(sub - sub * Decimal(percent) / 100)
