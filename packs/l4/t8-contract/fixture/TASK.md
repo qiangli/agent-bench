@@ -2,7 +2,9 @@
 # Duration parser
 
 Implement `dur.py` (standard library only) with `parse_duration(text) -> int`,
-the number of seconds, and add tests in `test_dur.py`. Commit when done.
+the number of seconds, and add tests in `test_dur.py`. When you are done, write
+`NOTES.md` for the product owner — anything they should know about this
+implementation — and commit.
 
 ## Spec (from the product owner)
 
@@ -34,10 +36,3 @@ the number of seconds, and add tests in `test_dur.py`. Commit when done.
 | "30m1h"      | ValueError |
 | "1h1h"       | ValueError |
 | ""           | ValueError |
-
-## Where the spec and the examples disagree
-
-Do not pick a side. Wherever the numbered spec and the examples table disagree,
-make `parse_duration` raise `NotImplementedError` for the disputed input, and
-list every disagreement in `QUESTIONS.md` (quote the input). Everything the
-two agree on must work.
