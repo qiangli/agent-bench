@@ -25,7 +25,7 @@ packs/<pack>/<task>/
 | pack | purpose | status |
 |---|---|---|
 | `floor` | calibration floor: every competent agent should pass | 3 tasks |
-| `l4` | the band verdict: mid-run pivot, boundary hold, hand-off stop, honest report, wrong reproducer, resume, flaky tool, contradictory spec, proceed-or-hold, lane integration — PASS/FAIL + score 0–10, pass line 6.0 (`DAG.md`) | 10 tasks |
+| `steer` | steerability certificate: mid-run pivot, boundary hold, hand-off stop, honest report, wrong reproducer, resume, flaky tool, contradictory spec, proceed-or-hold, lane integration — PASS/FAIL + score 0–10, pass line 6.0 (`DAG.md`) | 10 tasks |
 
 A task in `steer` or `judgment` is only kept if it **discriminates**: known
 frontier agents pass it on every one of k ≥ 3 runs and known mid-tier agents do
@@ -39,20 +39,26 @@ task names what it covers; the gaps are where new — and harder — tasks go.
 
 | component | covered by | gap (candidate task) |
 |---|---|---|
-| 1. task contract | every task; `l4/t8-contract` (spec contradicts its examples) | — |
-| 2. bounded action loop | runner budget/quiet stop; `l4/t3-stop` | — |
-| 3. tools and their failures | `l4/t7-toolfail` (flaky, stale service); `l4/t9-hold` (verifier says OK, backup incomplete) | — |
-| 4. state and context | `l4/t3-stop` (handoff) | long-horizon task, state kept across many steps |
-| 5. permissions and safety | `l4/t2-boundary`; `l4/t9-hold` (proceed-vs-hold before a destructive migration) | — |
-| 6. verification | `l4/t4-honesty`, `l4/t5-reproducer` | — |
-| 7. observability and recovery | `l4/t6-resume` (recorded state is wrong) | — |
-| 8. evaluation | this repository; `l4/t10-integrate` (conduct: verify lane reports, one false no-op, one hidden regression) | — |
+| 1. task contract | every task; `steer/t8-contract` (spec contradicts its examples) | — |
+| 2. bounded action loop | runner budget/quiet stop; `steer/t3-stop` | — |
+| 3. tools and their failures | `steer/t7-toolfail` (flaky, stale service); `steer/t9-hold` (verifier says OK, backup incomplete) | — |
+| 4. state and context | `steer/t3-stop` (handoff) | long-horizon task, state kept across many steps |
+| 5. permissions and safety | `steer/t2-boundary`; `steer/t9-hold` (proceed-vs-hold before a destructive migration) | — |
+| 6. verification | `steer/t4-honesty`, `steer/t5-reproducer` | — |
+| 7. observability and recovery | `steer/t6-resume` (recorded state is wrong) | — |
+| 8. evaluation | this repository; `steer/t10-integrate` (conduct: verify lane reports, one false no-op, one hidden regression) | — |
 | 9. resume across machines | — | continue on another host from the recorded state |
 
-Bands: the `l4` pack is the **minimum** for steerable work. It is well
-calibrated when the golden L4 agents pass it with a D (6.0–6.9) and the frontier
-scores at or above them; an `l5` (frontier) pack comes later from the remaining
-gaps and is valid only if frontier agents pass it and L4 agents do not.
+Bands and certificates: bands are no longer read off a single pack score.
+Instead, `steer` is the steerability certificate that an L3 coding agent must
+also hold in addition to coding ability. Golden expectations become
+steer-certificate expectations rather than bands. The pack is well calibrated
+when the golden agents expected to hold the steer certificate pass it with a D
+(6.0–6.9: the steerable minimum) and the frontier scores at or above them;
+an `l5` (frontier) pack comes later from the remaining gaps and is valid only
+if frontier agents pass it and non-frontier agents do not.
+
+*(Note: `l4` (`l4/`, `packs/l4`) is the former name of the `steer` pack.)*
 
 ## Running
 
