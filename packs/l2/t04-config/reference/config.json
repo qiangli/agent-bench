@@ -1,0 +1,12 @@
+{
+  "service": "orders-service",
+  "port": 8080,
+  "log_level": "info",
+  "workers": 4,
+  "timeout_s": 30,
+  "paths": {
+    "data": "data",
+    "cache": "cache"
+  },
+  "features": ["metrics", "tracing"]
+}

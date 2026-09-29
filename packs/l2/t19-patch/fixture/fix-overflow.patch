@@ -1,0 +1,11 @@
+--- a/ringbuf.py
++++ b/ringbuf.py
+@@ -18,7 +18,7 @@ class Ring:
+     def pop(self):
+         if self.size == 0:
+             raise IndexError("empty ring")
+         x = self.items[self.head]
+-        self.head += 1
++        self.head = (self.head + 1) % self.cap
+         self.size -= 1
+         return x

@@ -1,0 +1,21 @@
+{
+  "grand_total": 5600.85,
+  "regions": {
+    "East": {
+      "orders": 3,
+      "total": 1320.45
+    },
+    "North": {
+      "orders": 2,
+      "total": 2125.25
+    },
+    "South": {
+      "orders": 1,
+      "total": 1000.0
+    },
+    "West": {
+      "orders": 3,
+      "total": 1155.15
+    }
+  }
+}

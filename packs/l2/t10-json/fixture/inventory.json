@@ -1,0 +1,43 @@
+{
+  "warehouses": [
+    {
+      "name": "wh-alpha",
+      "sections": [
+        {
+          "name": "cold",
+          "items": [
+            {"sku": "MILK-1L", "qty": 40, "price": 1.15},
+            {"sku": "BUTR-250", "qty": 0, "price": 2.35}
+          ]
+        },
+        {
+          "name": "dry",
+          "items": [
+            {"sku": "RICE-5K", "qty": 12, "price": 8.9},
+            {"sku": "PSTA-500", "qty": 55, "price": 1.35}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "wh-beta",
+      "sections": [
+        {
+          "name": "dry",
+          "items": [
+            {"sku": "RICE-5K", "qty": 7, "price": 8.9},
+            {"sku": "BEAN-400", "qty": 0, "price": 0.99},
+            {"sku": "OATS-1K", "qty": 23, "price": 3.1}
+          ]
+        },
+        {
+          "name": "cold",
+          "items": [
+            {"sku": "MILK-1L", "qty": 18, "price": 1.15},
+            {"sku": "YOGT-150", "qty": 64, "price": 0.55}
+          ]
+        }
+      ]
+    }
+  ]
+}

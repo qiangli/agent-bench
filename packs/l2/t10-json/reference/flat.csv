@@ -1,0 +1,8 @@
+warehouse,section,sku,qty,price
+wh-alpha,cold,MILK-1L,40,1.15
+wh-alpha,dry,PSTA-500,55,1.35
+wh-alpha,dry,RICE-5K,12,8.90
+wh-beta,cold,MILK-1L,18,1.15
+wh-beta,cold,YOGT-150,64,0.55
+wh-beta,dry,OATS-1K,23,3.10
+wh-beta,dry,RICE-5K,7,8.90

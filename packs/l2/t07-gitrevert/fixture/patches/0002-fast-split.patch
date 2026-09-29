@@ -1,0 +1,14 @@
+diff --git a/csvline.py b/csvline.py
+index f819dc3..7f029dc 100644
+--- a/csvline.py
++++ b/csvline.py
+@@ -7,6 +7,9 @@ quote. A line with an unterminated quote raises ValueError.
+ 
+ 
+ def split_line(line):
++    if line.count('"') % 2 == 0:
++        # fast path: balanced quotes, a plain split is enough
++        return [f.strip('"') for f in line.split(',')]
+     fields, buf = [], []
+     in_q = False
+     i, n = 0, len(line)
