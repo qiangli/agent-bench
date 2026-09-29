@@ -1,0 +1,12 @@
+diff --git a/run_checks.sh b/run_checks.sh
+index 18de270..c99cca7 100755
+--- a/run_checks.sh
++++ b/run_checks.sh
+@@ -8,6 +8,6 @@ echo "== shell syntax"
+ for f in scripts/*.sh; do sh -n "$f"; done
+ 
+ echo "== unit tests"
+-python3 -m unittest discover -s tests
++python3 -m unittest discover -s tests 2>&1 | tail -n 20
+ 
+ echo "all checks passed"

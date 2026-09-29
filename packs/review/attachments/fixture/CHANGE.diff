@@ -1,0 +1,26 @@
+diff --git a/attachments.py b/attachments.py
+index 70dc2b6..8006a1c 100644
+--- a/attachments.py
++++ b/attachments.py
+@@ -4,16 +4,17 @@ import os
+ STORE = os.environ.get("ATTACHMENT_STORE", "/srv/attachments")
+ 
+ 
+-def attachment_path(attachment_id):
++def attachment_path(attachment_id, filename):
++    """Attachments are stored as STORE/<id>/<original file name>."""
+     if not attachment_id.isalnum():
+         raise ValueError("bad attachment id")
+-    return os.path.join(STORE, attachment_id)
++    return os.path.join(STORE, attachment_id, filename)
+ 
+ 
+ def handle_download(query):
+-    """GET /download?id=...  ->  (status, open file or message)."""
++    """GET /download?id=...&name=...  ->  (status, open file or message)."""
+     try:
+-        path = attachment_path(query["id"])
++        path = attachment_path(query["id"], query["name"])
+     except (KeyError, ValueError):
+         return 400, "bad request"
+     if not os.path.isfile(path):

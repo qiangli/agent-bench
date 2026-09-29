@@ -1,0 +1,41 @@
+diff --git a/dedupe.py b/dedupe.py
+index fae44b9..2d31f3b 100644
+--- a/dedupe.py
++++ b/dedupe.py
+@@ -10,3 +10,13 @@ def unique_ids(events):
+             seen.add(e["id"])
+             out.append(e["id"])
+     return out
++
++
++def unique_keys(events):
++    """(source, id) pairs in first-seen order, without duplicates."""
++    out = []
++    for e in events:
++        key = (e["source"], e["id"])
++        if key not in out:
++            out.append(key)
++    return out
+diff --git a/test_dedupe.py b/test_dedupe.py
+index f4b9448..5a77616 100644
+--- a/test_dedupe.py
++++ b/test_dedupe.py
+@@ -1,6 +1,6 @@
+ import unittest
+ 
+-from dedupe import unique_ids
++from dedupe import unique_ids, unique_keys
+ 
+ 
+ class DedupeTest(unittest.TestCase):
+@@ -8,6 +8,10 @@ class DedupeTest(unittest.TestCase):
+         events = [{"id": 3}, {"id": 1}, {"id": 3}, {"id": 2}]
+         self.assertEqual(unique_ids(events), [3, 1, 2])
+ 
++    def test_unique_keys_per_source(self):
++        events = [{"source": "a", "id": 1}, {"source": "b", "id": 1}, {"source": "a", "id": 1}]
++        self.assertEqual(unique_keys(events), [("a", 1), ("b", 1)])
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

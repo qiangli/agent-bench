@@ -1,0 +1,17 @@
+diff --git a/rotate_logs.sh b/rotate_logs.sh
+index 6143b6d..f817933 100755
+--- a/rotate_logs.sh
++++ b/rotate_logs.sh
+@@ -4,6 +4,10 @@ set -eu
+ LOG_DIR=${LOG_DIR:-./logs}
+ KEEP=${KEEP:-5}
+ 
+-ls -1t "$LOG_DIR"/app.log.* 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
+-  rm -f -- "$old"
++n=0
++ls -1t "$LOG_DIR"/app.log.* 2>/dev/null | while read -r old; do
++  n=$((n + 1))
++  if [ "$n" -ge "$KEEP" ]; then
++    rm -f -- "$old"
++  fi
+ done

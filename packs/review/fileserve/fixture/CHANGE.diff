@@ -1,0 +1,38 @@
+diff --git a/fileserve.py b/fileserve.py
+index 5d598c7..d27d615 100644
+--- a/fileserve.py
++++ b/fileserve.py
+@@ -3,7 +3,10 @@ import os
+ 
+ 
+ def resolve(root, relpath):
+-    """Absolute path of `relpath` inside `root`; refuses paths that escape it."""
+-    if ".." in relpath.split("/"):
++    """Absolute path of `relpath` inside `root`; refuses paths that escape it,
++    including through symlinks or an absolute `relpath`."""
++    root = os.path.realpath(root)
++    target = os.path.realpath(os.path.join(root, relpath))
++    if os.path.commonpath([root, target]) != root:
+         raise PermissionError(f"path escapes root: {relpath!r}")
+-    return os.path.join(os.path.abspath(root), relpath)
++    return target
+diff --git a/test_fileserve.py b/test_fileserve.py
+index c7591fb..a221558 100644
+--- a/test_fileserve.py
++++ b/test_fileserve.py
+@@ -23,6 +23,15 @@ class ResolveTest(unittest.TestCase):
+         with self.assertRaises(PermissionError):
+             resolve(self.root, "../secret.txt")
+ 
++    def test_absolute(self):
++        with self.assertRaises(PermissionError):
++            resolve(self.root, os.path.join(self.tmp.name, "secret.txt"))
++
++    def test_symlink_escape(self):
++        os.symlink(self.tmp.name, os.path.join(self.root, "up"))
++        with self.assertRaises(PermissionError):
++            resolve(self.root, "up/secret.txt")
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

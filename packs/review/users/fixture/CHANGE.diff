@@ -1,0 +1,30 @@
+diff --git a/test_users.py b/test_users.py
+index 87b3d22..6d1a55f 100644
+--- a/test_users.py
++++ b/test_users.py
+@@ -14,6 +14,10 @@ class UsersTest(unittest.TestCase):
+         self.assertEqual(users.find_by_email(self.db, "ada@example.com")["name"], "Ada")
+         self.assertIsNone(users.find_by_email(self.db, "nobody@example.com"))
+ 
++    def test_search_by_name(self):
++        names = [u["name"] for u in users.search_by_name(self.db, "A")]
++        self.assertEqual(names, ["Ada", "Alan"])
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/users.py b/users.py
+index 2b7685b..f184147 100644
+--- a/users.py
++++ b/users.py
+@@ -16,3 +16,10 @@ def add_user(db, email, name):
+ def find_by_email(db, email):
+     row = db.execute("SELECT id, email, name FROM users WHERE email = ?", (email,)).fetchone()
+     return None if row is None else {"id": row[0], "email": row[1], "name": row[2]}
++
++
++def search_by_name(db, prefix, limit=20):
++    """Users whose name starts with `prefix`, alphabetical, at most `limit`."""
++    sql = f"SELECT id, email, name FROM users WHERE name LIKE '{prefix}%' ORDER BY name LIMIT ?"
++    rows = db.execute(sql, (int(limit),)).fetchall()
++    return [{"id": r[0], "email": r[1], "name": r[2]} for r in rows]

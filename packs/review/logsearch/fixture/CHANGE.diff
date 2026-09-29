@@ -1,0 +1,30 @@
+diff --git a/dashboard.py b/dashboard.py
+index d5c91a3..c7ccf01 100644
+--- a/dashboard.py
++++ b/dashboard.py
+@@ -4,7 +4,7 @@ import subprocess
+ LOG_DIR = "/var/log/service"
+ 
+ 
+-def search(query):
++def search(query, case_insensitive=False):
+     args = ["sh", "search_logs.sh", query, LOG_DIR]
+     if case_insensitive:
+         args.append("-i")
+diff --git a/search_logs.sh b/search_logs.sh
+index 082c511..cce7024 100755
+--- a/search_logs.sh
++++ b/search_logs.sh
+@@ -1,7 +1,9 @@
+ #!/bin/sh
+-# Usage: search_logs.sh PATTERN [DIR]
+-# Print matching lines from the service logs.
++# Usage: search_logs.sh PATTERN [DIR] [EXTRA_GREP_FLAGS]
++# Print matching lines from the service logs. EXTRA_GREP_FLAGS lets callers
++# pass options such as -i or -w through to grep.
+ set -eu
+ pattern=$1
+ dir=${2:-/var/log/service}
+-grep -rn -e "$pattern" -- "$dir"
++flags=${3:-}
++eval "grep -rn $flags -e '$pattern' -- '$dir'"

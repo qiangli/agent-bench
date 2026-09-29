@@ -1,0 +1,44 @@
+diff --git a/logtail.py b/logtail.py
+index b357fee..408a0f3 100644
+--- a/logtail.py
++++ b/logtail.py
+@@ -1,18 +1,11 @@
+ """Show the end of a (possibly multi-gigabyte) application log."""
+-import os
+ 
+-CHUNK = 64 * 1024
+ 
+-
+-def tail(path, n=50):
+-    """Last `n` lines of the file at `path`, reading backwards in chunks."""
++def tail(path, n=50, contains=None):
++    """Last `n` lines of the file at `path`, optionally only those containing `contains`."""
+     with open(path, "rb") as f:
+-        f.seek(0, os.SEEK_END)
+-        pos = f.tell()
+-        data = b""
+-        while pos > 0 and data.count(b"\n") <= n:
+-            step = min(CHUNK, pos)
+-            pos -= step
+-            f.seek(pos)
+-            data = f.read(step) + data
+-    return [line.decode("utf-8", "replace") for line in data.splitlines()[-n:]]
++        lines = f.read().splitlines()
++    if contains is not None:
++        needle = contains.encode()
++        lines = [line for line in lines if needle in line]
++    return [line.decode("utf-8", "replace") for line in lines[-n:]]
+diff --git a/test_logtail.py b/test_logtail.py
+index a5cd92c..fe0e506 100644
+--- a/test_logtail.py
++++ b/test_logtail.py
+@@ -18,6 +18,9 @@ class TailTest(unittest.TestCase):
+     def test_last_lines(self):
+         self.assertEqual(tail(self.path, 2), ["INFO line 998", "INFO line 999"])
+ 
++    def test_filtered(self):
++        self.assertEqual(tail(self.path, 2, contains="ERROR"), ["ERROR line 980", "ERROR line 990"])
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

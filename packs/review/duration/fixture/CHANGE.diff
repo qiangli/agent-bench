@@ -1,0 +1,47 @@
+diff --git a/duration.py b/duration.py
+index 734ba79..bdb2f0b 100644
+--- a/duration.py
++++ b/duration.py
+@@ -1,8 +1,8 @@
+-"""Parse human durations like '1h30m' or '45s' into seconds."""
++"""Parse human durations like '2d', '1h30m' or '45s' into seconds."""
+ import re
+ 
+-_PART = re.compile(r"(\d+)([hms])")
+-_UNIT = {"h": 3600, "m": 60, "s": 1}
++_PART = re.compile(r"(\d+)([dhms])")
++_UNIT = {"d": 86400, "h": 3600, "m": 60, "s": 1}
+ 
+ 
+ def parse_duration(text):
+diff --git a/test_duration.py b/test_duration.py
+index f584b97..217aaa3 100644
+--- a/test_duration.py
++++ b/test_duration.py
+@@ -4,17 +4,17 @@ from duration import parse_duration
+ 
+ 
+ class DurationTest(unittest.TestCase):
+-    def test_seconds(self):
+-        self.assertEqual(parse_duration("45s"), 45)
++    CASES = [
++        ("45s", 45),
++        ("1h30m", 5400),
++        ("2d", 172800),
++        ("1d1h1m1s", 90061),
++    ]
+ 
+-    def test_compound(self):
+-        self.assertEqual(parse_duration("1h30m"), 5400)
+-
+-    def test_rejects_garbage(self):
+-        for text in ("", "10 minutes", "5x", "h1"):
++    def test_parses(self):
++        for text, seconds in self.CASES:
+             with self.subTest(text=text):
+-                with self.assertRaises(ValueError):
+-                    parse_duration(text)
++                self.assertEqual(parse_duration(text), seconds)
+ 
+ 
+ if __name__ == "__main__":

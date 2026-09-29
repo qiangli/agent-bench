@@ -1,0 +1,46 @@
+diff --git a/series.py b/series.py
+index 8ee4349..4bb42ae 100644
+--- a/series.py
++++ b/series.py
+@@ -3,7 +3,13 @@
+ 
+ def deltas(samples):
+     """Differences between consecutive values."""
++    return [b[1] - a[1] for a, b in zip(samples, samples[1:])]
++
++
++def gaps(samples, max_gap):
++    """Index pairs (i, i + 1) of consecutive samples more than `max_gap` apart."""
+     out = []
+-    for i in range(1, len(samples)):
+-        out.append(samples[i][1] - samples[i - 1][1])
++    for i in range(len(samples) - 1):
++        if samples[i + 1][0] - samples[i][0] > max_gap:
++            out.append((i, i + 1))
+     return out
+diff --git a/test_series.py b/test_series.py
+index 2c6ebfa..1304f35 100644
+--- a/test_series.py
++++ b/test_series.py
+@@ -1,6 +1,6 @@
+ import unittest
+ 
+-from series import deltas
++from series import deltas, gaps
+ 
+ 
+ class SeriesTest(unittest.TestCase):
+@@ -9,6 +9,13 @@ class SeriesTest(unittest.TestCase):
+         self.assertEqual(deltas([(0, 1)]), [])
+         self.assertEqual(deltas([]), [])
+ 
++    def test_gaps(self):
++        samples = [(0, 1), (10, 1), (50, 1), (60, 1), (200, 1)]
++        self.assertEqual(gaps(samples, 30), [(1, 2), (3, 4)])
++        self.assertEqual(gaps(samples, 1000), [])
++        self.assertEqual(gaps([(0, 1)], 30), [])
++        self.assertEqual(gaps([], 30), [])
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

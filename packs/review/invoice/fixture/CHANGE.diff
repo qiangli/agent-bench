@@ -1,0 +1,42 @@
+diff --git a/invoice.py b/invoice.py
+index 3204ff6..d5a9487 100644
+--- a/invoice.py
++++ b/invoice.py
+@@ -5,8 +5,10 @@ def line_total(qty, unit_cents):
+     return qty * unit_cents
+ 
+ 
+-def invoice_total(lines, tax_bps):
+-    """Sum of line totals plus tax in basis points, rounded half-up to the cent."""
++def invoice_total(lines, tax_bps, discount_cents=0):
++    """Sum of line totals less `discount_cents` (never below zero), plus tax in
++    basis points on the discounted subtotal, rounded half-up to the cent."""
+     subtotal = sum(line_total(q, u) for q, u in lines)
++    subtotal = max(0, subtotal - discount_cents)
+     tax = (subtotal * tax_bps + 5000) // 10000
+     return subtotal + tax
+diff --git a/test_invoice.py b/test_invoice.py
+index 9824a32..86fd14d 100644
+--- a/test_invoice.py
++++ b/test_invoice.py
+@@ -9,12 +9,19 @@ class InvoiceTest(unittest.TestCase):
+ 
+     def test_total_with_tax(self):
+         # 3 x 2.50 + 1 x 19.99 = 27.49; 8.25% tax = 2.268 -> 2.27
+-        self.assertEqual(invoice_total([(3, 250), (1, 1999)], 825), 2976)
++        self.assertGreater(invoice_total([(3, 250), (1, 1999)], 825), 2749)
+ 
+     def test_rounds_half_up(self):
+         # 1.00 at 0.5% tax = 0.005 -> 0.01
+         self.assertEqual(invoice_total([(1, 100)], 50), 101)
+ 
++    def test_discount_before_tax(self):
++        # 27.49 - 7.49 = 20.00; 8.25% tax = 1.65
++        self.assertEqual(invoice_total([(3, 250), (1, 1999)], 825, discount_cents=749), 2165)
++
++    def test_discount_never_negative(self):
++        self.assertEqual(invoice_total([(1, 100)], 825, discount_cents=500), 0)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

@@ -1,0 +1,38 @@
+diff --git a/paginate.py b/paginate.py
+index bfd6b40..e934a82 100644
+--- a/paginate.py
++++ b/paginate.py
+@@ -10,4 +10,11 @@ def page(items, number, size=20):
+ 
+ 
+ def page_count(total, size=20):
++    """Number of pages needed for `total` items (0 for none)."""
+     return (total + size - 1) // size
++
++
++def iter_pages(items, size=20):
++    """Yield every page of `items`, in order."""
++    for number in range(1, page_count(len(items), size)):
++        yield page(items, number, size)
+diff --git a/test_paginate.py b/test_paginate.py
+index 21a9a1b..ad8a7f8 100644
+--- a/test_paginate.py
++++ b/test_paginate.py
+@@ -1,6 +1,6 @@
+ import unittest
+ 
+-from paginate import page, page_count
++from paginate import iter_pages, page, page_count
+ 
+ 
+ class PageTest(unittest.TestCase):
+@@ -14,6 +14,9 @@ class PageTest(unittest.TestCase):
+         self.assertEqual(page_count(45), 3)
+         self.assertEqual(page_count(40), 2)
+ 
++    def test_iter_pages_starts_at_first_page(self):
++        self.assertEqual(next(iter_pages(list(range(45)))), list(range(20)))
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

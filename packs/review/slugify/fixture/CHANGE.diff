@@ -1,0 +1,47 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 5f52f50..729535f 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,4 +1,7 @@
+ # Changelog
+ 
++## 4.0.0
++- Removed `slugify_legacy` (deprecated since 2.0).
++
+ ## 2.0.0
+ - `slugify_legacy` is deprecated; use `slugify`. It will be removed in 4.0.
+diff --git a/test_textutil.py b/test_textutil.py
+index 567cf1a..1a22e83 100644
+--- a/test_textutil.py
++++ b/test_textutil.py
+@@ -1,14 +1,12 @@
+ import unittest
+ 
+-from textutil import slugify, slugify_legacy
++from textutil import slugify
+ 
+ 
+ class SlugTest(unittest.TestCase):
+     def test_slugify(self):
+-        self.assertTrue(slugify("Hello, World!") == "hello-world")
+-
+-    def test_slugify_legacy(self):
+-        self.assertEqual(slugify_legacy(" Hello World "), "hello_world")
++        self.assertEqual(slugify("Hello, World!"), "hello-world")
++        self.assertEqual(slugify("  Crème brûlée  "), "creme-brulee")
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/textutil.py b/textutil.py
+index f34a42c..5557c0e 100644
+--- a/textutil.py
++++ b/textutil.py
+@@ -7,8 +7,3 @@ def slugify(title):
+     """URL slug: ASCII, lower case, words joined by single hyphens."""
+     text = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode()
+     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+-
+-
+-def slugify_legacy(title):
+-    """Deprecated since 2.0: use slugify(). Kept for old bookmark URLs."""
+-    return title.strip().lower().replace(" ", "_")

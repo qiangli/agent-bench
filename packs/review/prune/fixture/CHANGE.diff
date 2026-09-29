@@ -1,0 +1,26 @@
+diff --git a/prune_backups.sh b/prune_backups.sh
+index 964eb4f..277c9df 100755
+--- a/prune_backups.sh
++++ b/prune_backups.sh
+@@ -7,10 +7,16 @@ BACKUP_DIR=${BACKUP_DIR:-/var/backups/app}
+ RETAIN_DAYS=${RETAIN_DAYS:-14}
+ DRY_RUN=${DRY_RUN:-}
+ 
+-find "$BACKUP_DIR" -name '*.tar.gz' -type f -mtime +"$RETAIN_DAYS" | while read -r f; do
+-  if [ -n "$DRY_RUN" ]; then
+-    echo "would delete $f"
++prune_one() {
++  if [ -z "$DRY_RUN" ]; then
++    echo "would delete $1"
+   else
+-    rm -f -- "$f"
++    rm -f -- "$1"
++    echo "deleted $1"
+   fi
+-done
++}
++
++find "$BACKUP_DIR" -type f \( -name '*.tar.gz' -o -name '*.tar.zst' \) -mtime +"$RETAIN_DAYS" |
++  while read -r f; do
++    prune_one "$f"
++  done
