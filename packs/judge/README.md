@@ -1,9 +1,9 @@
 # Judge calibration certificate
 
-This pack contains 20 planted cases with settled answers: 10 architecture decision records (ADRs), 6 code-change reviews, and 4 story estimates. All case text is synthetic and has no author or vendor identities.
+This pack contains 20 synthetic, blind cases: 10 architecture decision records (ADRs) and 10 code-change reviews. The cases target subtle operational behavior, including replay safety, clock skew, migration sequencing, cache stampedes, query growth, and concurrency bounds. No author or vendor identities are included.
 
-For each ADR, return `accept` or `reject` and one decisive reason tag from `violates-stated-constraint`, `unhandled-failure-mode`, `simpler-alternative-dominates`, `sound`, or `sound-with-caveat`. For code cases, return `accept` or `reject`. For estimates, return the exact settled point bucket; no tolerance is applied.
+For ADRs, return `accept` or `reject`, one decisive reason tag (`violates-stated-constraint`, `unhandled-failure-mode`, `simpler-alternative-dominates`, `sound`, or `sound-with-caveat`), and a case-specific justification. For code reviews, return `accept` or `reject` and a case-specific justification naming the decisive behavior and why the tempting alternative is wrong. Record one answer per case in `VERDICT.json`.
 
-A case agrees only when every required field agrees with its planted answer. The pack passes at 18 of 20 cases (at least 90%). The live judge queue draws 10% of its cases from planted cases like these, providing a continuing calibration check.
+A case agrees only when all required fields agree with its planted answer. The pack passes at 18 of 20 cases (at least 90%). The public fixture contains the cases; the grader and its answer key stay outside the fixture. `selfcheck.py` verifies that references pass and accept-all, reject-all, random-answer, and first-impression keyword strategies fail.
 
-`selfcheck.py` runs the hidden grader against the reference and checks that accept-everything, reject-everything, and random-answer strategies fail.
+Estimation accuracy is scored live from real deliveries, not from this pack. Story estimates are not assigned arbitrary exact buckets against a codebase that does not exist.
