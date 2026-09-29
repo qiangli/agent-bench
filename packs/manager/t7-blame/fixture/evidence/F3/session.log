@@ -1,0 +1,5 @@
+[00:00] session start (agent: lane-23)
+[00:02] note: the story says newest first but its example is oldest first; implementing the rule as written
+[00:05] wrote guests.recent() sorted by date descending
+[00:06] ran tests: 4 passed
+[00:08] review: REJECTED — output order does not match the acceptance example

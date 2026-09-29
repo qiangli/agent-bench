@@ -1,0 +1,8 @@
+$ python -m pytest -q
+..F   [100%]
+=================================== FAILURES ===================================
+_________________________ test_missing_code_rejected _________________________
+E   AttributeError: module 'importer' has no attribute 'reject_missing_code'
+=========================== short test summary info ============================
+FAILED tests/test_import.py::test_missing_code_rejected
+1 failed, 2 passed in 1.12s

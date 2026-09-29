@@ -1,0 +1,5 @@
+[00:00] session start (agent: lane-24)
+[00:00] tool banner: first run in this folder
+[00:00] Do you trust the files in this folder? (y/n) _
+[20:00] no output for 1200s
+[20:00] session ended by the runner: budget

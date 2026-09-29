@@ -1,0 +1,11 @@
+[00:00] session start (agent: lane-21)
+[00:01] read rooms.csv sample; 3 columns as specified
+[00:04] wrote importer.parse_rows()
+[00:06] ran tests/test_import.py: 2 passed
+[00:09] started importer.reject_missing_code()
+[00:10] model call failed: 429 rate_limit_error — usage limit reached for this billing period, resets in 5h
+[00:10] retry 1/3 in 30s
+[00:11] model call failed: 429 rate_limit_error — usage limit reached for this billing period, resets in 5h
+[00:11] retry 2/3 in 60s
+[00:12] model call failed: 429 rate_limit_error — usage limit reached for this billing period, resets in 5h
+[00:12] session ended by the runner: provider refused 3 times

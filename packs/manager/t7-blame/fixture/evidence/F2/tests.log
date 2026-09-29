@@ -1,0 +1,11 @@
+$ python -m pytest -q
+.F   [100%]
+=================================== FAILURES ===================================
+_______________________ test_export_prices_empty_day ________________________
+    def export_prices(day):
+>       first = rows[0]
+E       IndexError: list index out of range
+prices.py:18: IndexError
+=========================== short test summary info ============================
+FAILED tests/test_prices.py::test_export_prices_empty_day
+1 failed, 1 passed in 1.12s
