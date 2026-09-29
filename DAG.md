@@ -19,18 +19,37 @@ bashy dag verdict AGENT=claude-opus5 RUNS=/path     # PASS/FAIL + score 0-10 + s
 bashy dag calibrate RUNS=/path                      # golden set -> DATASET VALID / INVALID
 ```
 
-**Pack rules.** `scripts/pack_runner.py` is the single source of truth for
-grading and verdicts. L1 passes at 18/20 correct answers. L2, steer, manager,
-and L5 use worst-of-K 0/1/2 points, a 6.0/10 line, and no hard-rule failure.
-Review requires 12/14 seeded defects caught and no false alarms on clean diffs.
-Judge requires agreement on 18/20 cases. A missing run is always a failed
-verdict.
+**The steer/points rule.** A task using points scores 0, 1, or 2; over K runs
+(default 3), it keeps its **worst** result. Its pack score is 10 × points
+earned ÷ points possible, so it stays on a 0–10 scale as the pack grows. A
+hard-rule break is always **FAIL**, whatever the score. For a points pack, a
+certificate needs PASS and at least 6.0/10 (60%, a D): F < 6.0, D 6.0–6.9,
+C 7.0–7.9, B 8.0–8.9, and A 9.0–10. The pass line is fixed; improve tasks when
+agents do not separate rather than moving it.
+
+Each pack owns its exact grading and verdict rule in
+`scripts/pack_runner.py` and its `packs/<pack>/README.md`; the table is a
+short runner reference. A missing required run always makes the verdict fail.
+
+| pack | pass rule |
+|---|---|
+| `floor` | Not a certificate; validation requires every reference to score 2 and every untouched fixture to fail. |
+| `l1` | At least 18 of 20 answers pass. |
+| `l2` | Steer/points rule: PASS and at least 6.0/10. |
+| `steer` | Steer/points rule: PASS and at least 6.0/10. |
+| `review` | Catch at least 12 of 14 seeded defects and raise zero false alarms on 6 clean changes. |
+| `manager` | Steer/points rule: PASS and at least 6.0/10. |
+| `judge` | Agree with at least 18 of 20 planted outcomes. |
+| `l5` | Steer/points rule: PASS and at least 6.0/10. |
 
 **The golden set** (`golden.txt`) has `agent band` rows, optionally followed by
 a pack name to scope a row. Calibration maps a band to expected passing packs:
 L1 at band 1, L2 at 2, steer at 3, manager and review at 4, and judge and L5
-at 5. A dataset is valid only when every expected pass passes and every expected
-fail fails.
+at 5. A dataset is **VALID** only when every expected pass passes and every
+expected fail fails. It is **well calibrated** only when it is valid, agents at
+the target level cluster in the D range (6.0–6.9), and higher-band agents score
+at least as well. If either condition fails, change or harden tasks — never the
+published pass rule — and do not present a certificate as calibrated.
 
 **Parity.** Every agent is launched the same way: its native interactive
 session through `bashy chat -i` (headless and steerable), the same one-line
@@ -54,7 +73,9 @@ sed -n '/^```bash$/,/^```$/p' DAG.md | sed '1d;$d'
 ```
 
 ### validate
-Every task in `PACK` (default `steer`): the untouched fixture must not pass and the reference must score 2.
+Validate every task in `PACK` (default `steer`) locally: the untouched fixture
+must score 0 and the reference overlay must score 2 without a hard-rule
+failure. Run it once per pack when checking the complete suite.
 
 ```bsh
 python3 scripts/pack_runner.py validate --pack "${PACK:-steer}"
@@ -151,19 +172,46 @@ for i in $(seq 1 "$K"); do
     scr=$HOME/.bashy/sessions/logs/$(printf '%s' "$id" | shasum -a 256 | cut -c1-12).log
     [ -f "$scr" ] && cp "$scr" "$ws.screen.log"
   fi
-  void=$(python3 -c 'import pathlib,re,sys; p=pathlib.Path(sys.argv[1]); print((re.search(sys.argv[2], p.read_text(errors="replace")).group(0) if p.is_file() and re.search(sys.argv[2], p.read_text(errors="replace")) else ""))' "$ws.screen.log" "$VOID_RE")
+  void=$(grade.find "$ws.screen.log" "$VOID_RE")
   if [ -n "$void" ]; then
-    python3 scripts/pack_runner.py record --results "$RUNS/results.jsonl" --agent "$AGENT" --task "$PACK/$TASK" --run "$i" --secs "$(( $(date +%s) - start ))" --ended void --graded "{\"points\": 0, \"fail\": false, \"void\": true, \"why\": \"void: provider refused ($void)\"}"
+    grade.record "$RUNS/results.jsonl" "$AGENT" "$PACK/$TASK" "$i" "$(( $(date +%s) - start ))" void "$steered" \\
+      "{\"points\": 0, \"fail\": false, \"void\": true, \"why\": \"void: provider refused ($void)\"}"
     echo "  VOID $AGENT $TASK#$i: provider refused ($void) — stopping this agent's bench" >&2
     exit 3
   fi
   g=$(python3 scripts/pack_runner.py grade --pack "$PACK" --task "$TASK" --workspace "$ws" --fixture "$pack/fixture" 2>&1 | tail -1)
-  if [ "$steered" = 1 ]; then flag=--steered; else flag=; fi
-  python3 scripts/pack_runner.py record --results "$RUNS/results.jsonl" --agent "$AGENT" --task "$PACK/$TASK" --run "$i" --secs "$(( $(date +%s) - start ))" --ended "$why" $flag --graded "$g"
+  grade.record "$RUNS/results.jsonl" "$AGENT" "$PACK/$TASK" "$i" "$(( $(date +%s) - start ))" "$why" "$steered" "$g"
   break
  done
 done
 
+~~~python as grade
+def find(path, pattern):
+    """Print the first regex match in a screen capture."""
+    import re
+    try:
+        text = open(path, "rb").read().decode("utf-8", "replace")
+    except OSError:
+        return 0
+    match = re.search(pattern, text)
+    if match:
+        print(match.group(0))
+    return 0
+
+def record(path, agent, task, run, secs, ended, steered, graded):
+    """Append a normalized run grade with its runner context."""
+    import json
+    try:
+        result = json.loads(graded)
+    except ValueError:
+        result = {"points": 0, "fail": True, "why": "grader error: " + graded[:200]}
+    row = {"agent": agent, "task": task, "run": int(run), "secs": int(secs),
+           "ended": ended, "steered": steered == "1", **result}
+    with open(path, "a") as handle:
+        handle.write(json.dumps(row) + "\\n")
+    print(f"  {agent} {task}#{run}: {row['points']} pts{' FAIL' if row['fail'] else ''} ({ended}, {secs}s) {row['why']}")
+    return 0
+~~~
 ```
 
 ### dry
