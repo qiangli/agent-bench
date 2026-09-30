@@ -22,15 +22,21 @@ KNOWN_PACKS = {"floor", "l1", "l2", "steer", "review", "manager", "judge", "l5"}
 
 
 def task_dirs(pack: str) -> list[Path]:
-    """Return task manifests; judge is one task rooted at its pack directory."""
+    """Return task directories, including manifest-less command-grader tasks."""
     root = PACKS / pack
     if not root.is_dir() and pack not in KNOWN_PACKS:
         raise ValueError(f"unknown pack: {pack}")
     if not root.is_dir():
         return []
-    if (root / "task.yaml").is_file():
-        return [root]
-    return sorted(p.parent for p in root.glob("*/task.yaml"))
+    children = sorted(child for child in root.iterdir() if child.is_dir() and is_task_dir(child))
+    # Some packs share a pack-level grader while their task manifests live in
+    # children.  A root is a task only when there are no child tasks (judge).
+    return children or ([root] if is_task_dir(root) else [])
+
+
+def is_task_dir(directory: Path) -> bool:
+    """A task has either a manifest or its own executable command grader."""
+    return (directory / "task.yaml").is_file() or (directory / "grader" / "grade.py").is_file()
 
 
 def task_names(pack: str) -> list[str]:
@@ -92,8 +98,8 @@ def overlay(source: Path, destination: Path) -> None:
 def validate(pack: str) -> int:
     tasks = task_dirs(pack)
     if not tasks:
-        print(f"SKIP {pack}: no task.yaml files")
-        return 0
+        print(f"ERROR {pack}: no task directories found")
+        return 2
     rc = 0
     for directory in tasks:
         task = directory.name if directory != PACKS / pack else "calibration"
@@ -165,6 +171,9 @@ def certificate(pack: str, rows: list[dict], agent: str, k: int) -> tuple[bool, 
 
 
 def verdict(path: Path, pack: str, agent: str, k: int) -> int:
+    if not task_dirs(pack):
+        print(f"ERROR {pack}: no task directories found")
+        return 2
     rows = read_rows(path)
     agents = sorted({str(row.get("agent")) for row in rows}) if agent == "all" else [agent]
     for name in agents:
