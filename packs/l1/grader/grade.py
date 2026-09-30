@@ -30,7 +30,14 @@ def main() -> int:
         ok = answer.casefold() == key["value"].casefold()
     elif key["type"] == "number":
         try:
-            ok = math.isclose(float(answer), key["value"], abs_tol=key["tolerance"], rel_tol=0)
+            # One numeric literal and, optionally, one alphabetic unit word.
+            match = re.fullmatch(
+                r"([+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?)(?:[ \t]+[A-Za-z]+)?",
+                answer,
+            )
+            ok = match is not None and math.isclose(
+                float(match[1]), key["value"], abs_tol=key["tolerance"], rel_tol=0
+            )
         except ValueError:
             ok = False
     elif key["type"] == "regex":

@@ -1,6 +1,8 @@
+import ntpath
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from fileserve import resolve
 
@@ -26,6 +28,11 @@ class ResolveTest(unittest.TestCase):
     def test_absolute(self):
         with self.assertRaises(PermissionError):
             resolve(self.root, os.path.join(self.tmp.name, "secret.txt"))
+
+    def test_different_windows_drive(self):
+        with patch("fileserve.os.path", ntpath):
+            with self.assertRaises(PermissionError):
+                resolve("C:/site", "D:/outside.txt")
 
     def test_symlink_escape(self):
         os.symlink(self.tmp.name, os.path.join(self.root, "up"))

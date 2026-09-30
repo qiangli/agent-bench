@@ -1,5 +1,5 @@
 diff --git a/clean.sh b/clean.sh
-index 3e9e899..9aed999 100755
+index 3e9e899..cac68d8 100755
 --- a/clean.sh
 +++ b/clean.sh
 @@ -1,5 +1,10 @@
@@ -11,7 +11,7 @@ index 3e9e899..9aed999 100755
 -rm -rf build
 +BUILD_DIR=${BUILD_DIR:-build}
 +case $BUILD_DIR in
-+  "" | / | . | .. | ../* | */.. | */../*) echo "clean.sh: refusing to remove '$BUILD_DIR'" >&2; exit 2 ;;
++  "" | /* | . | .. | ../* | */.. | */../*) echo "clean.sh: refusing to remove '$BUILD_DIR'" >&2; exit 2 ;;
 +esac
 +rm -rf -- "$BUILD_DIR"
 +mkdir -p -- "$BUILD_DIR"

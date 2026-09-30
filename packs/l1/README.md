@@ -7,6 +7,11 @@ agent writes that answer, and nothing else, to `ANSWER.txt`.
 The pack passes when at least 18 of its 20 tasks pass (90%). The grader accepts
 an exact normalized string, a numeric value within the task's stated tolerance,
 or a small regular-expression match, as appropriate to the task.
+Numeric answers may include one trailing alphabetic unit word, separated by
+spaces or tabs; extra numbers and explanatory phrases are rejected.
+
+Run `python3 packs/l1/selfcheck.py` for numeric parsing regression tests and
+checks that all 20 references pass while missing, empty, and naive answers fail.
 
 Calibration rule: agents known to meet L1 must pass this suite, while agents
 below L1 must not. If calibration changes, replace or improve tasks; never move
