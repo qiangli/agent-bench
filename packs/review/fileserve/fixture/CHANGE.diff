@@ -1,8 +1,8 @@
 diff --git a/fileserve.py b/fileserve.py
-index 5d598c7..2426967 100644
+index 5d598c7..8e631a9 100644
 --- a/fileserve.py
 +++ b/fileserve.py
-@@ -3,7 +3,14 @@ import os
+@@ -3,7 +3,17 @@ import os
 
 
  def resolve(root, relpath):
@@ -10,6 +10,9 @@ index 5d598c7..2426967 100644
 -    if ".." in relpath.split("/"):
 +    """Absolute path of `relpath` inside `root`; refuses paths that escape it,
 +    including through symlinks or an absolute `relpath`."""
++    separators = tuple(s for s in (os.path.sep, os.path.altsep) if s)
++    if relpath.startswith(separators) or os.path.splitdrive(relpath)[0]:
++        raise PermissionError(f"absolute or drive-qualified path: {relpath!r}")
 +    root = os.path.realpath(root)
 +    target = os.path.realpath(os.path.join(root, relpath))
 +    try:
@@ -21,7 +24,7 @@ index 5d598c7..2426967 100644
 -    return os.path.join(os.path.abspath(root), relpath)
 +    return target
 diff --git a/test_fileserve.py b/test_fileserve.py
-index c7591fb..0f8caa4 100644
+index c7591fb..4861895 100644
 --- a/test_fileserve.py
 +++ b/test_fileserve.py
 @@ -1,6 +1,8 @@
@@ -33,13 +36,23 @@ index c7591fb..0f8caa4 100644
 
  from fileserve import resolve
 
-@@ -23,6 +25,20 @@ class ResolveTest(unittest.TestCase):
+@@ -23,6 +25,30 @@ class ResolveTest(unittest.TestCase):
          with self.assertRaises(PermissionError):
              resolve(self.root, "../secret.txt")
 
 +    def test_absolute(self):
 +        with self.assertRaises(PermissionError):
 +            resolve(self.root, os.path.join(self.tmp.name, "secret.txt"))
++
++    def test_absolute_inside(self):
++        with self.assertRaises(PermissionError):
++            resolve(self.root, os.path.join(self.root, "docs", "a.txt"))
++
++    def test_windows_absolute_inside(self):
++        with patch("fileserve.os.path", ntpath):
++            for path in ("C:/site/a.txt", "C:a.txt", "/site/a.txt"):
++                with self.subTest(path=path), self.assertRaises(PermissionError):
++                    resolve("C:/site", path)
 +
 +    def test_different_windows_drive(self):
 +        with patch("fileserve.os.path", ntpath):

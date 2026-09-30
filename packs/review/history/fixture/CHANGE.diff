@@ -1,9 +1,9 @@
 diff --git a/history.py b/history.py
-index 91d9e32..adfe2f5 100644
+index 91d9e32..c41cea5 100644
 --- a/history.py
 +++ b/history.py
-@@ -9,3 +9,13 @@ def _git(repo, *args):
- 
+@@ -9,3 +9,16 @@ def _git(repo, *args):
+
  def current_branch(repo):
      return _git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
 +
@@ -11,24 +11,47 @@ index 91d9e32..adfe2f5 100644
 +def commits_touching(repo, path, limit=50):
 +    """Hashes of the commits that changed `path`, newest first.
 +
-+    Arguments go to git as a list (no shell), and `--` ends the options, so a
-+    path such as `-n.txt` or `$(id)` is only ever treated as a path.
++    The path is literal, including wildcard characters and pathspec prefixes.
++    A negative limit is invalid; zero returns no commits.
 +    """
-+    out = _git(repo, "log", f"--max-count={int(limit)}", "--format=%H", "--", path)
++    limit = int(limit)
++    if limit < 0:
++        raise ValueError("limit must be nonnegative")
++    out = _git(repo, "--literal-pathspecs", "log", f"--max-count={limit}", "--format=%H", "--", path)
 +    return out.split()
 diff --git a/test_history.py b/test_history.py
-index 2a3f256..bb81b5b 100644
+index 2a3f256..3a63278 100644
 --- a/test_history.py
 +++ b/test_history.py
-@@ -28,6 +28,11 @@ class HistoryTest(unittest.TestCase):
+@@ -28,6 +28,31 @@ class HistoryTest(unittest.TestCase):
      def test_current_branch(self):
          self.assertEqual(history.current_branch(self.repo), "main")
- 
+
 +    def test_commits_touching(self):
 +        self.assertEqual(len(history.commits_touching(self.repo, "a.txt")), 1)
 +        self.assertEqual(len(history.commits_touching(self.repo, "-n.txt")), 1)
 +        self.assertEqual(history.commits_touching(self.repo, "$(id)"), [])
 +
- 
++    def test_literal_pathspec(self):
++        for name in (":(glob)**", "*.txt"):
++            self.assertEqual(history.commits_touching(self.repo, name), [])
++            with open(os.path.join(self.repo, name), "w") as f:
++                f.write("literal")
++            sh(self.repo, "--literal-pathspecs", "add", "--", name)
++            sh(self.repo, "commit", "-q", "-m", "add literal filename")
++            expected = history._git(self.repo, "rev-parse", "HEAD").strip()
++            self.assertEqual(history.commits_touching(self.repo, name), [expected])
++
++    def test_limits(self):
++        with self.assertRaises(ValueError):
++            history.commits_touching(self.repo, "a.txt", -1)
++        self.assertEqual(history.commits_touching(self.repo, "a.txt", 0), [])
++        with open(os.path.join(self.repo, "a.txt"), "a") as f:
++            f.write("changed")
++        sh(self.repo, "commit", "-qam", "update a")
++        self.assertEqual(len(history.commits_touching(self.repo, "a.txt", 1)), 1)
++        self.assertEqual(len(history.commits_touching(self.repo, "a.txt", 2)), 2)
++
+
  if __name__ == "__main__":
      unittest.main()

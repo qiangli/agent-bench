@@ -1,5 +1,5 @@
 diff --git a/publish.sh b/publish.sh
-index 8062bca..78723ba 100755
+index 8062bca..b972495 100755
 --- a/publish.sh
 +++ b/publish.sh
 @@ -1,8 +1,12 @@
@@ -16,15 +16,15 @@ index 8062bca..78723ba 100755
 +archive=$1
 +[ -f "$archive" ] || { echo "publish.sh: no such archive: $archive" >&2; exit 2; }
 +
-+# The header goes to curl on stdin (-H @-), so the token never shows up in ps.
++# Pass the header on stdin, keeping it out of curl arguments and environment.
 +printf 'Authorization: Bearer %s\n' "$DEPLOY_TOKEN" |
-+  curl --fail -sS -H @- --data-binary @"$archive" "$INDEX_URL"
++  (unset DEPLOY_TOKEN; exec curl --fail -sS -H @- --data-binary @"$archive" "$INDEX_URL")
 diff --git a/tests/test_publish.sh b/tests/test_publish.sh
 new file mode 100755
-index 0000000..0941718
+index 0000000..53be0f5
 --- /dev/null
 +++ b/tests/test_publish.sh
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,35 @@
 +#!/bin/sh
 +# Runs publish.sh against a stub curl; no network. Exit 0 = pass.
 +set -eu
@@ -37,6 +37,8 @@ index 0000000..0941718
 +# stub: record stdin (headers) and the argument list
 +cat > "$STUB_OUT.stdin"
 +printf '%s\n' "$*" > "$STUB_OUT.args"
++[ "${DEPLOY_TOKEN+x}" != x ] || { echo "FAIL: token inherited by curl" >&2; exit 1; }
++exit "${STUB_STATUS:-0}"
 +EOF
 +chmod +x "$tmp/curl"
 +echo data > "$tmp/pkg.tgz"
@@ -53,4 +55,8 @@ index 0000000..0941718
 +  echo "FAIL: ran without DEPLOY_TOKEN" >&2
 +  exit 1
 +fi
++status=0
++STUB_STATUS=22 STUB_OUT="$tmp/failed" PATH="$tmp:$PATH" DEPLOY_TOKEN=test-token-not-real \
++  sh "$here/publish.sh" "$tmp/pkg.tgz" || status=$?
++[ "$status" -eq 22 ] || { echo "FAIL: curl failure lost" >&2; exit 1; }
 +echo "ok"

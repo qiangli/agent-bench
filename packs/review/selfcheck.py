@@ -61,12 +61,18 @@ def run_grader(task_dir: Path, workdir: Path) -> dict:
 
 
 def main() -> int:
-    for tests in (PACK / "grader", PACK / "fileserve/fixture"):
+    for tests in (PACK / "grader", *(PACK / name / "fixture" for name in
+                                    ("fileserve", "history", "series", "slugify"))):
         regression = subprocess.run(
             [sys.executable, "-B", "-m", "unittest", "discover", "-s", str(tests), "-p", "test_*.py"],
             capture_output=True, text=True,
         )
         check(regression.returncode == 0, f"fixture regressions: {regression.stdout}{regression.stderr}")
+    publish = subprocess.run(
+        ["sh", str(PACK / "publish/fixture/tests/test_publish.sh")],
+        capture_output=True, text=True,
+    )
+    check(publish.returncode == 0, f"publish regression: {publish.stdout}{publish.stderr}")
     key = load_key()
     tasks = sorted(p.parent for p in PACK.glob("*/task.yaml"))
     names = [t.name for t in tasks]

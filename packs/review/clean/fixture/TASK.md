@@ -2,7 +2,9 @@
 # Review this change: Configurable build directory for clean.sh
 
 `clean.sh` honours BUILD_DIR like the build script already does, and recreates
-the empty directory afterwards so the next build does not have to.
+the empty directory afterwards so the next build does not have to. Supported
+output directories are relative to the script, without parent traversal or
+symlink components; unsafe targets must be rejected.
 
 ## What you have
 

@@ -1,9 +1,11 @@
 """Helpers for time series of (timestamp, value) samples, sorted by timestamp."""
 
+from itertools import islice
+
 
 def deltas(samples):
     """Differences between consecutive values."""
-    return [b[1] - a[1] for a, b in zip(samples, samples[1:])]
+    return [b[1] - a[1] for a, b in zip(samples, islice(samples, 1, None))]
 
 
 def gaps(samples, max_gap):

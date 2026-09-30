@@ -2,7 +2,7 @@
   "arithmetic": {"type": "number", "value": 372, "tolerance": 0},
   "percent": {"type": "number", "value": 73.44, "tolerance": 0.01},
   "units": {"type": "number", "value": 3.2, "tolerance": 0.001},
-  "logic": {"type": "exact", "value": "Oranges"},
+  "logic": {"type": "exact", "value": "Apples"},
   "code": {"type": "exact", "value": "[2, 4, 6]"},
   "date": {"type": "exact", "value": "2024-03-02"},
   "regex": {"type": "number", "value": 2, "tolerance": 0},

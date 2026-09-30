@@ -14,8 +14,11 @@ def current_branch(repo):
 def commits_touching(repo, path, limit=50):
     """Hashes of the commits that changed `path`, newest first.
 
-    Arguments go to git as a list (no shell), and `--` ends the options, so a
-    path such as `-n.txt` or `$(id)` is only ever treated as a path.
+    The path is literal, including wildcard characters and pathspec prefixes.
+    A negative limit is invalid; zero returns no commits.
     """
-    out = _git(repo, "log", f"--max-count={int(limit)}", "--format=%H", "--", path)
+    limit = int(limit)
+    if limit < 0:
+        raise ValueError("limit must be nonnegative")
+    out = _git(repo, "--literal-pathspecs", "log", f"--max-count={limit}", "--format=%H", "--", path)
     return out.split()

@@ -29,6 +29,16 @@ class ResolveTest(unittest.TestCase):
         with self.assertRaises(PermissionError):
             resolve(self.root, os.path.join(self.tmp.name, "secret.txt"))
 
+    def test_absolute_inside(self):
+        with self.assertRaises(PermissionError):
+            resolve(self.root, os.path.join(self.root, "docs", "a.txt"))
+
+    def test_windows_absolute_inside(self):
+        with patch("fileserve.os.path", ntpath):
+            for path in ("C:/site/a.txt", "C:a.txt", "/site/a.txt"):
+                with self.subTest(path=path), self.assertRaises(PermissionError):
+                    resolve("C:/site", path)
+
     def test_different_windows_drive(self):
         with patch("fileserve.os.path", ntpath):
             with self.assertRaises(PermissionError):

@@ -12,9 +12,9 @@ PACK = Path(__file__).resolve().parents[1]
 
 class CleanGuardTest(unittest.TestCase):
     def test_guard_before_removal(self):
-        allowed = ("build", "out/build", "build outputs")
+        allowed = ("build", "out/build", "build outputs", "./out//build/", "-output")
         forbidden = ("absolute", "double-slash", "triple-slash", "absolute-dot",
-                     ".", "..", "../x", "build/..", "build/../outside")
+                     ".", "..", "../x", "build/..", "build/../outside", "./", "././", ".//")
         for case in (*allowed, *forbidden):
             with self.subTest(value=case), tempfile.TemporaryDirectory() as tmp:
                 sandbox = Path(tmp).resolve()
@@ -55,6 +55,28 @@ class CleanGuardTest(unittest.TestCase):
                 for sentinel, contents in before.items():
                     self.assertTrue(sentinel.is_file(), str(sentinel))
                     self.assertEqual(sentinel.read_bytes(), contents)
+
+    def test_symlink_components(self):
+        for value in ("link/child", "link/", "link", "out/link/child"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as tmp:
+                sandbox = Path(tmp)
+                root = sandbox / "work"
+                root.mkdir()
+                outside = sandbox / "outside"
+                (outside / "child").mkdir(parents=True)
+                sentinel = outside / "child/keep"
+                sentinel.write_text("keep")
+                link = root / ("out/link" if value.startswith("out/") else "link")
+                link.parent.mkdir(parents=True, exist_ok=True)
+                link.symlink_to(outside, target_is_directory=True)
+                script = root / "clean.sh"
+                shutil.copy(PACK / "clean/fixture/clean.sh", script)
+                run = subprocess.run(["sh", str(script)], cwd=root,
+                                     env={**os.environ, "BUILD_DIR": value},
+                                     capture_output=True, text=True, timeout=10)
+                self.assertEqual(run.returncode, 2, run.stderr)
+                self.assertEqual(sentinel.read_text(), "keep")
+                self.assertTrue(link.is_symlink())
 
 
 if __name__ == "__main__":

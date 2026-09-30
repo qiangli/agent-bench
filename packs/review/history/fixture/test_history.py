@@ -33,6 +33,26 @@ class HistoryTest(unittest.TestCase):
         self.assertEqual(len(history.commits_touching(self.repo, "-n.txt")), 1)
         self.assertEqual(history.commits_touching(self.repo, "$(id)"), [])
 
+    def test_literal_pathspec(self):
+        for name in (":(glob)**", "*.txt"):
+            self.assertEqual(history.commits_touching(self.repo, name), [])
+            with open(os.path.join(self.repo, name), "w") as f:
+                f.write("literal")
+            sh(self.repo, "--literal-pathspecs", "add", "--", name)
+            sh(self.repo, "commit", "-q", "-m", "add literal filename")
+            expected = history._git(self.repo, "rev-parse", "HEAD").strip()
+            self.assertEqual(history.commits_touching(self.repo, name), [expected])
+
+    def test_limits(self):
+        with self.assertRaises(ValueError):
+            history.commits_touching(self.repo, "a.txt", -1)
+        self.assertEqual(history.commits_touching(self.repo, "a.txt", 0), [])
+        with open(os.path.join(self.repo, "a.txt"), "a") as f:
+            f.write("changed")
+        sh(self.repo, "commit", "-qam", "update a")
+        self.assertEqual(len(history.commits_touching(self.repo, "a.txt", 1)), 1)
+        self.assertEqual(len(history.commits_touching(self.repo, "a.txt", 2)), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

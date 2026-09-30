@@ -7,6 +7,6 @@ INDEX_URL=${INDEX_URL:-https://packages.example.invalid/upload}
 archive=$1
 [ -f "$archive" ] || { echo "publish.sh: no such archive: $archive" >&2; exit 2; }
 
-# The header goes to curl on stdin (-H @-), so the token never shows up in ps.
+# Pass the header on stdin, keeping it out of curl arguments and environment.
 printf 'Authorization: Bearer %s\n' "$DEPLOY_TOKEN" |
-  curl --fail -sS -H @- --data-binary @"$archive" "$INDEX_URL"
+  (unset DEPLOY_TOKEN; exec curl --fail -sS -H @- --data-binary @"$archive" "$INDEX_URL")

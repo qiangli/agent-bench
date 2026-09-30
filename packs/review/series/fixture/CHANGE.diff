@@ -1,12 +1,16 @@
 diff --git a/series.py b/series.py
-index 8ee4349..4bb42ae 100644
+index 8ee4349..03e3e7b 100644
 --- a/series.py
 +++ b/series.py
-@@ -3,7 +3,13 @@
- 
+@@ -1,9 +1,17 @@
+ """Helpers for time series of (timestamp, value) samples, sorted by timestamp."""
+
++from itertools import islice
++
+
  def deltas(samples):
      """Differences between consecutive values."""
-+    return [b[1] - a[1] for a, b in zip(samples, samples[1:])]
++    return [b[1] - a[1] for a, b in zip(samples, islice(samples, 1, None))]
 +
 +
 +def gaps(samples, max_gap):
@@ -19,21 +23,30 @@ index 8ee4349..4bb42ae 100644
 +            out.append((i, i + 1))
      return out
 diff --git a/test_series.py b/test_series.py
-index 2c6ebfa..1304f35 100644
+index 2c6ebfa..d8e5793 100644
 --- a/test_series.py
 +++ b/test_series.py
 @@ -1,6 +1,6 @@
  import unittest
- 
+
 -from series import deltas
 +from series import deltas, gaps
- 
- 
+
+
  class SeriesTest(unittest.TestCase):
-@@ -9,6 +9,13 @@ class SeriesTest(unittest.TestCase):
+@@ -9,6 +9,22 @@ class SeriesTest(unittest.TestCase):
          self.assertEqual(deltas([(0, 1)]), [])
          self.assertEqual(deltas([]), [])
- 
+
++    def test_deltas_without_input_copy(self):
++        class NoSlice(list):
++            def __getitem__(self, index):
++                if isinstance(index, slice):
++                    raise AssertionError("input must not be copied")
++                return super().__getitem__(index)
++
++        self.assertEqual(deltas(NoSlice([(0, 1), (10, 4), (20, 2)])), [3, -2])
++
 +    def test_gaps(self):
 +        samples = [(0, 1), (10, 1), (50, 1), (60, 1), (200, 1)]
 +        self.assertEqual(gaps(samples, 30), [(1, 2), (3, 4)])
@@ -41,6 +54,6 @@ index 2c6ebfa..1304f35 100644
 +        self.assertEqual(gaps([(0, 1)], 30), [])
 +        self.assertEqual(gaps([], 30), [])
 +
- 
+
  if __name__ == "__main__":
      unittest.main()
