@@ -208,7 +208,7 @@ def record(path, agent, task, run, secs, ended, steered, graded):
     row = {"agent": agent, "task": task, "run": int(run), "secs": int(secs),
            "ended": ended, "steered": steered == "1", **result}
     with open(path, "a") as handle:
-        handle.write(json.dumps(row) + "\\n")
+        handle.write(json.dumps(row) + "\n")
     print(f"  {agent} {task}#{run}: {row['points']} pts{' FAIL' if row['fail'] else ''} ({ended}, {secs}s) {row['why']}")
     return 0
 ~~~
