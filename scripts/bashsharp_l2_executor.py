@@ -124,7 +124,7 @@ def invoke(args, manifest: dict, task: str, repetition: int, arm: str, image_id:
         )
         elapsed = round(time.monotonic() - started, 3)
         terminal = redact(stdout + stderr)
-        log_path = log_dir / f"{task}-r{repetition}-{arm}.log"
+        log_path = log_dir / f"{task}-r{repetition}-{arm}-{name}.log"
         log_path.write_text(terminal)
         result = grade("l2", task, work / "work", fixture)
         row.update({
