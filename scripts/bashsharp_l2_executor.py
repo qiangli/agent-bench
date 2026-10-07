@@ -88,6 +88,7 @@ def base_row(manifest: dict, task: str, repetition: int, arm: str, image_id: str
         "provider": manifest["provider"], "provider_cli": manifest["provider_cli"],
         "provider_image_id": image_id,
         "candidate_sha256": manifest["candidate_sha256"],
+        "arm_assets_tree_sha256": manifest["arm_assets_tree_sha256"],
         "fixture_tree_sha256": tree_digest(fixture),
         "model_options_sha256": manifest["model_options_sha256"],
         "manifest_sha256": manifest["manifest_sha256"],
@@ -116,8 +117,13 @@ def invoke(args, manifest: dict, task: str, repetition: int, arm: str, image_id:
         initialize_workspace(fixture, work / "work")
         if digest(work / "work/TASK.md") != task_meta["task_prompt_sha256"]:
             raise ValueError("copied TASK.md does not match the frozen task prompt")
+        source_assets = ROOT / "experiments/bashsharp-l2/arms"
+        if tree_digest(source_assets) != manifest["arm_assets_tree_sha256"]:
+            raise ValueError("arm assets changed after prepare")
         assets = work / "assets"
-        shutil.copytree(ROOT / "experiments/bashsharp-l2/arms", assets)
+        shutil.copytree(source_assets, assets)
+        if tree_digest(assets) != manifest["arm_assets_tree_sha256"]:
+            raise ValueError("copied arm assets do not match prepared digest")
         # A real evaluator-only negative control. This directory is intentionally
         # absent from every mount given to the agent principal.
         control = work / "evaluator-only/marker.txt"
@@ -190,9 +196,9 @@ def invoke(args, manifest: dict, task: str, repetition: int, arm: str, image_id:
             receipt.get("model") != manifest["model"],
             receipt.get("model_options_sha256") != manifest["model_options_sha256"],
             receipt.get("prompt_sha256") != task_meta["provider_prompt_sha256"],
-            receipt.get("forbidden_action_types") != [],
+            not isinstance(receipt.get("forbidden_action_types"), list),
             not isinstance(receipt.get("command_executions"), int),
-            receipt.get("command_executions", 0) < 1,
+            isinstance(receipt.get("command_executions"), bool),
             not (
                 (isinstance(receipt.get("tokens"), int) and receipt.get("tokens") >= 0 and receipt.get("token_source") == "codex-turn.completed")
                 or (receipt.get("tokens") is None and receipt.get("token_source") == "unknown-no-final-usage")
@@ -204,6 +210,7 @@ def invoke(args, manifest: dict, task: str, repetition: int, arm: str, image_id:
                 "tokens": receipt["tokens"], "token_source": receipt["token_source"],
                 "provider_usage": receipt.get("usage"),
             })
+            apply_protocol_failure(row, receipt)
         return row
     except Exception as error:
         stop_container(args.engine, name)
@@ -216,6 +223,13 @@ def invoke(args, manifest: dict, task: str, repetition: int, arm: str, image_id:
         shutil.rmtree(work, ignore_errors=True)
 
 
+def apply_protocol_failure(row: dict, receipt: dict) -> dict:
+    forbidden=receipt["forbidden_action_types"]
+    executions=receipt["command_executions"]
+    if executions < 1 or forbidden:
+        row.update({"points":0,"fail":True,"protocol_failure":True,"forbidden_action_types":forbidden,"command_executions":executions})
+    return row
+
 def schedule(manifest: dict) -> list[tuple[str, int, str]]:
     jobs = []
     rng = random.Random(str(manifest["seed"]))
@@ -227,6 +241,14 @@ def schedule(manifest: dict) -> list[tuple[str, int, str]]:
             jobs.extend((task, repetition, arm) for arm in ARMS[rotation:] + ARMS[:rotation])
     return jobs
 
+
+def pending_jobs(manifest: dict, history: list[dict]) -> list[tuple[str,int,str]]:
+    attempts={}
+    for row in history:
+        key=(row["task"],row["repetition"],row["arm"])
+        attempts.setdefault(key,[]).append(row)
+    completed={key for key,rows_for_key in attempts.items() if any(not row.get("void") for row in rows_for_key)}
+    return [job for job in schedule(manifest) if job not in completed]
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -254,10 +276,8 @@ def main() -> int:
     image_id = image_identity(args.engine, args.image, args.platform)
     output = Path(args.raw); output.parent.mkdir(parents=True, exist_ok=True)
     log_dir = output.parent / "logs"; log_dir.mkdir(exist_ok=True)
-    completed = set()
-    if output.exists():
-        completed = {(row["task"], row["repetition"], row["arm"]) for row in rows(output)}
-    pending = [job for job in schedule(manifest) if job not in completed]
+    history = rows(output) if output.exists() else []
+    pending = pending_jobs(manifest, history)
     if args.limit is not None: pending = pending[:args.limit]
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool, output.open("a") as stream:
         futures = [pool.submit(invoke, args, manifest, *job, image_id, log_dir) for job in pending]

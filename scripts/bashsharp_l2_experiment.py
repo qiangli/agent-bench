@@ -46,7 +46,7 @@ def prepare(a: argparse.Namespace) -> int:
         if not task_file.is_file(): raise ValueError(f"{task} fixture is missing TASK.md")
         prompt="Read TASK.md and do the task."
         task_rows.append({"id":task,"task_sha256":digest(ROOT/"packs/l2"/task/"task.yaml"),"fixture_tree_sha256":tree_digest(fixture),"prompt":prompt,"task_prompt_sha256":digest(task_file),"provider_prompt_sha256":hashlib.sha256((prompt+ACTION_CONSTRAINT).encode()).hexdigest()})
-    m = {"schema":"bashsharp-l2-v4", "story_id":"050a68a821a9", "pack":"l2", "provider":"codex", "provider_cli":"codex-cli 0.157.1", "tasks":task_rows, "k":a.k, "model":a.model, "agent":"codex-cli/0.157.1", "seed":a.seed, "model_options":opts, "model_options_sha256":json_digest(opts), "candidate_path":str(candidate), "candidate_sha256":digest(candidate), "budget_seconds":a.budget_seconds, "isolation":{"required":True,"method":"oci","platform":"linux/arm64","mounts":"fixture+candidate+arm-assets+runtime-secret","evaluator_outside_principal":True,"shell_enforcement":"container /bin/sh and /bin/bash are arm wrapper"}, "arms":{"bash":{"dialect":"explicitly-off","shell_args":["--no-bashpp"],"prelude":None},"guards-contracts":{"dialect":"on","shell_args":["--bashpp"],"prelude":"arms/guards-contracts.bsh"},"fences":{"dialect":"on","shell_args":["--bashpp"],"prelude":"arms/fences.bsh"}}, "pricing":{"usd":"unknown","reason":"dollars remain unknown without provider pricing evidence"}}
+    m = {"schema":"bashsharp-l2-v4", "story_id":"050a68a821a9", "pack":"l2", "provider":"codex", "provider_cli":"codex-cli 0.157.1", "tasks":task_rows, "k":a.k, "model":a.model, "agent":"codex-cli/0.157.1", "seed":a.seed, "model_options":opts, "model_options_sha256":json_digest(opts), "candidate_path":str(candidate), "candidate_sha256":digest(candidate), "arm_assets_tree_sha256":tree_digest(ROOT/"experiments/bashsharp-l2/arms"), "budget_seconds":a.budget_seconds, "isolation":{"required":True,"method":"oci","platform":"linux/arm64","mounts":"fixture+candidate+arm-assets+runtime-secret","evaluator_outside_principal":True,"shell_enforcement":"container /bin/sh and /bin/bash are arm wrapper"}, "arms":{"bash":{"dialect":"explicitly-off","shell_args":["--no-bashpp"],"prelude":None},"guards-contracts":{"dialect":"on","shell_args":["--bashpp"],"prelude":"arms/guards-contracts.bsh"},"fences":{"dialect":"on","shell_args":["--bashpp"],"prelude":"arms/fences.bsh"}}, "pricing":{"usd":"unknown","reason":"dollars remain unknown without provider pricing evidence"}}
     m["manifest_sha256"] = json_digest(m)
     (out/"manifest.json").write_text(json.dumps(m, indent=2, sort_keys=True)+"\n"); print(out/"manifest.json"); return 0
 
@@ -65,14 +65,20 @@ def validate(m: dict, raw: list[dict]) -> None:
     need={"task","repetition","arm","points","fail","tokens","token_source","model","agent","provider","provider_cli","provider_image_id","candidate_sha256","fixture_tree_sha256","model_options_sha256","manifest_sha256","terminal_output","negative_control_sha256"}
     expected={(x["id"],r,a) for x in m["tasks"] for r in range(1,m["k"]+1) for a in ARMS}; fixtures={x["id"]:x["fixture_tree_sha256"] for x in m["tasks"]}; seen=set()
     image_ids=set()
+    attempts=Counter()
     for index,row in enumerate(raw,1):
         row.setdefault("_line",index)
-        if row.get("void"): raise ValueError(f"raw row {row['_line']} is void: {row.get('void_reason', 'no reason')}; void attempts cannot enter paired evidence")
+        key=(row.get("task"),row.get("repetition"),row.get("arm"))
+        if row.get("void"):
+            if key not in expected: raise ValueError(f"raw row {row['_line']} has invalid void task/repetition/arm")
+            attempts[key]+=1
+            if not row.get("void_reason"): raise ValueError(f"raw row {row['_line']} void attempt lacks reason")
+            continue
         missing=need-row.keys()
         if missing: raise ValueError(f"raw row {row['_line']} missing fields: {', '.join(sorted(missing))}")
-        key=(row["task"],row["repetition"],row["arm"])
         if not isinstance(row["repetition"],int) or key not in expected: raise ValueError(f"raw row {row['_line']} has invalid task/repetition/arm")
-        if key in seen: raise ValueError(f"duplicate task/repetition/arm row: {key}")
+        attempts[key]+=1
+        if key in seen: raise ValueError(f"duplicate valid outcome for task/repetition/arm: {key}")
         seen.add(key)
         if not isinstance(row["points"],(int,float)) or not isinstance(row["fail"],bool): raise ValueError(f"raw row {row['_line']} has invalid grade")
         known_tokens=isinstance(row["tokens"],int) and not isinstance(row["tokens"],bool) and row["tokens"]>=0 and row["token_source"]=="codex-turn.completed"
@@ -83,13 +89,15 @@ def validate(m: dict, raw: list[dict]) -> None:
         if not isinstance(row["provider_image_id"],str) or not row["provider_image_id"]: raise ValueError(f"raw row {row['_line']} has no provider image identity")
         image_ids.add(row["provider_image_id"])
         if row["candidate_sha256"]!=m["candidate_sha256"] or row["fixture_tree_sha256"]!=fixtures[row["task"]]: raise ValueError(f"raw row {row['_line']} mixes candidate or fixture digest")
+        if row.get("arm_assets_tree_sha256")!=m["arm_assets_tree_sha256"]: raise ValueError(f"raw row {row['_line']} mixes arm assets digest")
         if row["model_options_sha256"]!=m["model_options_sha256"] or row["manifest_sha256"]!=m["manifest_sha256"]: raise ValueError(f"raw row {row['_line']} has mixed model options or manifest")
-    if seen!=expected: raise ValueError(f"raw rows are not exactly paired: expected {len(expected)}, got {len(seen)}")
+    if seen!=expected: raise ValueError(f"raw rows are not exactly paired: expected {len(expected)} nonvoid outcomes, got {len(seen)}")
     if len(image_ids)!=1: raise ValueError("raw rows mix provider images")
 
 def report(a: argparse.Namespace) -> int:
-    m=json.loads(Path(a.manifest).read_text()); validate_manifest(m); raw=rows(Path(a.raw)); validate(m,raw)
-    for r in raw: r.pop("_line",None); r["instance_id"]=f"{r['task']}#{r['repetition']}"; r["resolved"]=bool(r["points"]==2 and not r["fail"]); r["failure_class"]="timeout" if r.get("timed_out") else classify(str(r["terminal_output"]))
+    m=json.loads(Path(a.manifest).read_text()); validate_manifest(m); attempts=rows(Path(a.raw)); validate(m,attempts)
+    raw=[r for r in attempts if not r.get("void")]
+    for r in raw: r.pop("_line",None); r["instance_id"]=f"{r['task']}#{r['repetition']}"; r["resolved"]=bool(r["points"]==2 and not r["fail"]); r["failure_class"]="timeout" if r.get("timed_out") else "strict_protocol" if r.get("protocol_failure") else classify(str(r["terminal_output"]))
     normalized=Path(a.output).with_suffix(".jsonl"); normalized.write_text("".join(json.dumps(r,sort_keys=True)+"\n" for r in raw))
     paired={}
     for left,right in (("bash","guards-contracts"),("bash","fences"),("guards-contracts","fences")):
@@ -101,7 +109,9 @@ def report(a: argparse.Namespace) -> int:
     for arm in ARMS:
         own=[r for r in raw if r["arm"]==arm]; solved=sum(r["resolved"] for r in own); known=sum(r["tokens"] for r in own if isinstance(r["tokens"],int)); unknown=sum(r["tokens"] is None for r in own); cps[arm]={"solves":solved,"known_tokens_lower_bound":known,"unknown_token_rows":unknown,"tokens_per_solve_lower_bound":known/solved if solved else None}
     known_total=sum(r["tokens"] for r in raw if isinstance(r["tokens"],int)); unknown_total=sum(r["tokens"] is None for r in raw)
-    evidence={"manifest":m,"raw_rows":raw,"paired":paired,"cost_per_solve":cps,"failure_taxonomy":dict(Counter(r["failure_class"] for r in raw)),"tokens":{"known_total_lower_bound":known_total,"unknown_rows":unknown_total},"pricing":m["pricing"]}
+    for r in attempts: r.pop("_line",None)
+    attempt_counts=Counter((r["task"],r["repetition"],r["arm"]) for r in attempts)
+    evidence={"manifest":m,"attempt_accounting":{"total_attempts":len(attempts),"void_attempts":sum(bool(r.get("void")) for r in attempts),"valid_outcomes":len(raw),"retried_keys":sum(count>1 for count in attempt_counts.values()),"attempts_per_key":{f"{t}#{rep}/{arm}":count for (t,rep,arm),count in sorted(attempt_counts.items())}},"raw_rows":attempts,"paired":paired,"cost_per_solve":cps,"failure_taxonomy":dict(Counter(r["failure_class"] for r in raw)),"tokens":{"known_total_lower_bound":known_total,"unknown_rows":unknown_total},"pricing":m["pricing"]}
     Path(a.output).write_text(json.dumps(evidence,indent=2,sort_keys=True)+"\n"); print(a.output); return 0
 
 def main() -> int:

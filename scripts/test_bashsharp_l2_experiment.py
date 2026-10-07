@@ -8,8 +8,8 @@ EXECUTOR=importlib.util.spec_from_file_location("executor",Path(__file__).with_n
 ADAPTER=importlib.util.spec_from_file_location("adapter",Path(__file__).with_name("bashsharp_l2_codex_adapter.py")); adapter=importlib.util.module_from_spec(ADAPTER); ADAPTER.loader.exec_module(adapter)
 class ExperimentTest(unittest.TestCase):
  def manifest(self):
-  m={"schema":"bashsharp-l2-v4","k":3,"model":"m","agent":"a","provider":"codex","provider_cli":"codex-cli 0.157.1","candidate_sha256":"c","model_options_sha256":"o","pricing":{"usd":"unknown"},"tasks":[{"id":"t01","fixture_tree_sha256":"f"}]}; m["manifest_sha256"]=experiment.json_digest(m); return m
- def row(self,r,arm): return {"task":"t01","repetition":r,"arm":arm,"points":2,"fail":False,"tokens":4,"token_source":"codex-turn.completed","terminal_output":"command not found","model":"m","agent":"a","provider":"codex","provider_cli":"codex-cli 0.157.1","provider_image_id":"sha256:image","negative_control_sha256":"n","candidate_sha256":"c","fixture_tree_sha256":"f","model_options_sha256":"o","manifest_sha256":self.manifest()["manifest_sha256"]}
+  m={"schema":"bashsharp-l2-v4","k":3,"model":"m","agent":"a","provider":"codex","provider_cli":"codex-cli 0.157.1","candidate_sha256":"c","arm_assets_tree_sha256":"assets","model_options_sha256":"o","pricing":{"usd":"unknown"},"tasks":[{"id":"t01","fixture_tree_sha256":"f"}]}; m["manifest_sha256"]=experiment.json_digest(m); return m
+ def row(self,r,arm): return {"task":"t01","repetition":r,"arm":arm,"points":2,"fail":False,"tokens":4,"token_source":"codex-turn.completed","terminal_output":"command not found","model":"m","agent":"a","provider":"codex","provider_cli":"codex-cli 0.157.1","provider_image_id":"sha256:image","negative_control_sha256":"n","candidate_sha256":"c","fixture_tree_sha256":"f","arm_assets_tree_sha256":"assets","model_options_sha256":"o","manifest_sha256":self.manifest()["manifest_sha256"]}
  def test_taxonomy(self): self.assertEqual(experiment.classify("bash: nope: command not found"),"command_not_found")
  def test_manifest_digest_is_not_self_asserted(self):
   m={"schema":"x"}; m["manifest_sha256"]=experiment.json_digest(m.copy()); experiment.validate_manifest(m)
@@ -31,6 +31,28 @@ class ExperimentTest(unittest.TestCase):
    shutil.copytree(task/"reference",workspace,dirs_exist_ok=True)
    self.assertEqual(executor.grade("l2","t11-refactor",workspace,fixture)["points"],2)
    self.assertEqual(git("show","HEAD:shapes.py"),fixture_shapes)
+ def test_arm_assets_drift_rejected(self):
+  raw=[self.row(r,a) for r in range(1,4) for a in experiment.ARMS]; raw[0]["arm_assets_tree_sha256"]="drift"
+  with self.assertRaisesRegex(ValueError,"arm assets digest"): experiment.validate(self.manifest(),raw)
+ def test_void_history_retries_only_when_no_valid_attempt(self):
+  m={"seed":1,"k":3,"tasks":[{"id":"t01"}]}; jobs=executor.schedule(m); key=jobs[0]
+  void={"task":key[0],"repetition":key[1],"arm":key[2],"void":True}
+  pending=executor.pending_jobs(m,[void]); self.assertIn(key,pending)
+  valid=dict(void); valid.pop("void"); self.assertNotIn(key,executor.pending_jobs(m,[void,valid]))
+ def test_protocol_failures_keep_usage_and_are_scored(self):
+  row={"points":2,"fail":False,"tokens":71,"token_source":"codex-turn.completed"}
+  executor.apply_protocol_failure(row,{"command_executions":2,"forbidden_action_types":["web_search"]})
+  self.assertEqual((row["points"],row["fail"],row["tokens"]),(0,True,71)); self.assertNotIn("void",row)
+  row={"points":2,"fail":False,"tokens":8}; executor.apply_protocol_failure(row,{"command_executions":0,"forbidden_action_types":[]})
+  self.assertEqual((row["points"],row["fail"]),(0,True)); self.assertNotIn("void",row)
+ def test_void_attempt_history_and_duplicate_valid_outcomes(self):
+  m=self.manifest(); raw=[self.row(r,a) for r in range(1,4) for a in experiment.ARMS]
+  void=dict(raw[0]); void.update(void=True,void_reason="temporary infra failure"); raw.insert(0,void); experiment.validate(m,raw)
+  raw.append(self.row(1,"bash"))
+  with self.assertRaisesRegex(ValueError,"duplicate valid outcome"): experiment.validate(m,raw)
+  terminal=[r for r in raw if not (r["task"]=="t01" and r["repetition"]==1 and r["arm"]=="bash")]
+  terminal.append(void)
+  with self.assertRaisesRegex(ValueError,"exactly paired"): experiment.validate(m,terminal)
  def test_candidate_architecture_is_arm64_elf(self):
   with tempfile.TemporaryDirectory() as d:
    binary=Path(d)/"bashy"; header=bytearray(20); header[:6]=b"\x7fELF\x02\x01"; header[18:20]=(183).to_bytes(2,"little"); binary.write_bytes(header)

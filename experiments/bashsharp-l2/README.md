@@ -153,3 +153,12 @@ identity, CLI version, model/options, candidate, fixture, task prompt, raw logs,
 usage, and negative-control digest accompany the row. Dollar pricing remains
 explicitly unknown; evidence reports a known-token lower bound, unknown usage
 count, and lower-bound tokens per solve, not fabricated currency cost.
+
+Scoring is identical for all three arms: a normal completion with zero shell
+commands is a strict protocol failure (0 points, `fail=true`) while retaining
+provider usage. Any off-interface action reported in `forbidden_action_types`
+is also a strict protocol failure (0 points, `fail=true`), retains real usage,
+and is never classified as infrastructure void or removed from scoring. Only
+infra/auth/void attempts may be retried, and only when all prior attempts for
+the key are void; reports require exactly one nonvoid outcome per key and keep
+void history with attempt accounting.
