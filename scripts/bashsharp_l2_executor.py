@@ -94,6 +94,17 @@ def base_row(manifest: dict, task: str, repetition: int, arm: str, image_id: str
     }
 
 
+def initialize_workspace(fixture: Path, workspace: Path) -> None:
+    """Copy a fixture at the same Git boundary used by the pack DAG."""
+    shutil.copytree(fixture, workspace)
+    subprocess.run(["git", "init", "-q", "-b", "main", str(workspace)], check=True)
+    subprocess.run(["git", "-C", str(workspace), "add", "-A"], check=True)
+    subprocess.run([
+        "git", "-C", str(workspace), "-c", "user.name=bench",
+        "-c", "user.email=bench@example.invalid", "commit", "-qm", "fixture",
+    ], check=True)
+
+
 def invoke(args, manifest: dict, task: str, repetition: int, arm: str, image_id: str, log_dir: Path) -> dict:
     fixture = ROOT / "packs/l2" / task / "fixture"
     task_meta = next(item for item in manifest["tasks"] if item["id"] == task)
@@ -102,7 +113,7 @@ def invoke(args, manifest: dict, task: str, repetition: int, arm: str, image_id:
     name = f"s381-{uuid.uuid4().hex[:20]}"
     started = time.monotonic()
     try:
-        shutil.copytree(fixture, work / "work")
+        initialize_workspace(fixture, work / "work")
         if digest(work / "work/TASK.md") != task_meta["task_prompt_sha256"]:
             raise ValueError("copied TASK.md does not match the frozen task prompt")
         assets = work / "assets"
@@ -225,7 +236,7 @@ def main() -> int:
     parser.add_argument("--auth-kind", choices=("api-key", "auth-json"), default="auth-json")
     parser.add_argument("--jobs", type=int, default=4); parser.add_argument("--cpus", type=float, default=1)
     parser.add_argument("--memory", default="1500m"); parser.add_argument("--pids-limit", type=int, default=256)
-    parser.add_argument("--network", default="slirp4netns")
+    parser.add_argument("--network", default="pasta")
     parser.add_argument("--platform", default="linux/arm64")
     parser.add_argument("--uid", type=int, default=os.getuid()); parser.add_argument("--gid", type=int, default=os.getgid())
     parser.add_argument("--limit", type=int, help="run only the first N pending trials (smoke use only)")

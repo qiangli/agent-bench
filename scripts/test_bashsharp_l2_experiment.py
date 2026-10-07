@@ -19,6 +19,18 @@ class ExperimentTest(unittest.TestCase):
   m={"seed":381,"k":3,"tasks":[{"id":f"t{i:02}"} for i in range(20)]}; jobs=executor.schedule(m)
   self.assertEqual(len(jobs),180)
   self.assertEqual({a:sum(job[2]==a for job in jobs) for a in experiment.ARMS},{a:60 for a in experiment.ARMS})
+ def test_executor_initializes_clean_fixture_commit_for_history_tasks(self):
+  task=Path(__file__).parents[1]/"packs/l2/t11-refactor"; fixture=task/"fixture"
+  with tempfile.TemporaryDirectory() as d:
+   workspace=Path(d)/"work"; executor.initialize_workspace(fixture,workspace)
+   def git(*args): return __import__('subprocess').run(["git","-C",str(workspace),*args],text=True,capture_output=True,check=True).stdout
+   self.assertEqual(git("branch","--show-current").strip(),"main")
+   self.assertEqual(git("log","-1","--format=%s").strip(),"fixture")
+   self.assertEqual(git("status","--porcelain"),"")
+   fixture_shapes=(fixture/"shapes.py").read_text()
+   shutil.copytree(task/"reference",workspace,dirs_exist_ok=True)
+   self.assertEqual(executor.grade("l2","t11-refactor",workspace,fixture)["points"],2)
+   self.assertEqual(git("show","HEAD:shapes.py"),fixture_shapes)
  def test_candidate_architecture_is_arm64_elf(self):
   with tempfile.TemporaryDirectory() as d:
    binary=Path(d)/"bashy"; header=bytearray(20); header[:6]=b"\x7fELF\x02\x01"; header[18:20]=(183).to_bytes(2,"little"); binary.write_bytes(header)

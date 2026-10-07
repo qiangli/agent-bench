@@ -16,7 +16,13 @@ rejected before any provider call.
 ```sh
 ssh "$TEST_HOST"
 cd "$WORKDIR/bashy"
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 make build BIN_DIR=bin/linux
+mkdir -p bin/linux bin/host
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
+  go build -trimpath -ldflags=-w -o bin/linux/bashy ./cmd/bashy
+env -u GOOS -u GOARCH -u CGO_ENABLED \
+  go run ./tools/elfaudit --bashy-signal bin/linux/bashy
+env -u GOOS -u GOARCH -u CGO_ENABLED \
+  go build -trimpath -o bin/host/bashy ./cmd/bashy
 file bin/linux/bashy                 # must report ARM64 ELF, not Mach-O
 
 cd "$WORKDIR/agent-bench"
@@ -26,6 +32,12 @@ podman build \
   -t localhost/s381-codex:0.157.1 .
 podman image inspect --format '{{.Id}} {{.Os}}/{{.Architecture}}' localhost/s381-codex:0.157.1
 ```
+
+Do not cross-build with `GOOS=linux ... make build` on Darwin. The Make target
+also runs `go run ./tools/elfaudit`; inherited `GOOS` makes that helper a Linux
+ELF and Darwin fails to execute it. Build the candidate with the separate
+`go build` above, then run `elfaudit` as a host-native Go program. The audit can
+inspect the Linux ELF without executing it.
 
 The image pins `@openai/codex` 0.157.1 and includes the task tools (Git,
 Python/pytest, Make, and a C compiler). It contains no credential. Import the
@@ -53,6 +65,8 @@ missing final usage stays explicitly unknown.
 
 ```sh
 cd "$WORKDIR/agent-bench"
+mkdir -p "$HOME/.cache/s381/tmp"
+export TMPDIR="$HOME/.cache/s381/tmp"
 python3 scripts/bashsharp_l2_experiment.py prepare \
   --output "$RESULTS_DIR/full" \
   --candidate "$WORKDIR/bashy/bin/linux/bashy" \
@@ -64,7 +78,7 @@ cp "$RESULTS_DIR/full/manifest.json" "$RESULTS_DIR/smoke-manifest.json"
 python3 scripts/bashsharp_l2_executor.py \
   --manifest "$RESULTS_DIR/smoke-manifest.json" \
   --raw "$RESULTS_DIR/smoke.jsonl" \
-  --image localhost/s381-codex:0.157.1 --jobs 1 --limit 1
+  --image localhost/s381-codex:0.157.1 --network pasta --jobs 1 --limit 1
 python3 -c 'import json,sys; r=json.loads(open(sys.argv[1]).read()); assert not r.get("void"),r' \
   "$RESULTS_DIR/smoke.jsonl"
 ```
@@ -87,14 +101,21 @@ is never silently rerun.
 python3 scripts/bashsharp_l2_executor.py \
   --manifest "$RESULTS_DIR/full/manifest.json" \
   --raw "$RESULTS_DIR/full/raw.jsonl" \
-  --image localhost/s381-codex:0.157.1 --jobs 4
+  --image localhost/s381-codex:0.157.1 --network pasta --jobs 4
 
 python3 scripts/bashsharp_l2_experiment.py report \
   --manifest "$RESULTS_DIR/full/manifest.json" \
   --raw "$RESULTS_DIR/full/raw.jsonl" \
   --output "$RESULTS_DIR/full/evidence.json" \
-  --bashy "$WORKDIR/bashy/bin/linux/bashy"
+  --bashy "$WORKDIR/bashy/bin/host/bashy"
 ```
+
+`TMPDIR` must name a directory under the Podman VM's shared home tree so the
+executor's per-trial workspace can be bind-mounted. Current Podman rejects the
+legacy `slirp4netns` backend in this environment; use `--network pasta`. On
+Darwin, `report --bashy` must point to a host-native Bashy binary because the
+report executes `bashy stats paired`; the Linux/arm64 candidate is only for the
+provider containers.
 
 A timeout stops and removes the named container, preserves partial redacted
 output, grades the resulting workspace, and writes a genuine failed outcome.
