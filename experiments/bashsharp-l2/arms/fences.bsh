@@ -1,14 +1,19 @@
 # A real Bash# fence is loaded on every action; the source call remains under
 # the same enforced guard/contracts boundary as the guards arm.
 ~~~sh as experiment_context
-printf '%s\n' bashsharp-fence-active >/dev/null
+fence_ready() { :; }
 ~~~
 
-@guard(effects: "read,write,process_exec")
+@guard(effects: "read,write,exec")
 @require('test -f "$BASHY_EXPERIMENT_ACTION"')
 @ensure('test -f "$BASHY_EXPERIMENT_ACTION"')
 agentic function experiment_action() {
-    experiment_context.run
+    # This is a real qualified Bash# fence invocation.  Keep its stdout and
+    # status out of the action's result: a failed fence stops the action, and
+    # a successful one adds no output before sourcing the model's command.
+    experiment_context.fence_ready()
+    fence_status=$?
+    [ "$fence_status" -eq 0 ] || return "$fence_status"
     source "$BASHY_EXPERIMENT_ACTION"
 }
 agentic { experiment_action; }
