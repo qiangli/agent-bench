@@ -1,0 +1,26 @@
+FROM docker.io/library/node:22-bookworm-slim
+
+ARG CODEX_CLI_VERSION=0.157.1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       bash build-essential ca-certificates findutils gawk git grep make patch \
+       python3 python3-pytest sed \
+    && npm install --global "@openai/codex@${CODEX_CLI_VERSION}" \
+    && rm -rf /var/lib/apt/lists/* /root/.npm
+
+COPY scripts/bashsharp_l2_action_shell.py /opt/s381/action-shell
+COPY scripts/bashsharp_l2_codex_adapter.py /opt/s381/codex-adapter
+
+# Codex normally chooses its own shell. Replacing both standard shell paths is
+# the enforcement boundary: every model command reaches the selected arm even
+# when the model or CLI ignores $SHELL. The adapter itself is executed directly.
+RUN chmod 0555 /opt/s381/action-shell /opt/s381/codex-adapter \
+    && mkdir -p /usr/local/libexec \
+    && mv /bin/bash /usr/local/libexec/s381-original-bash \
+    && rm /bin/sh \
+    && ln -s /opt/s381/action-shell /bin/bash \
+    && ln -s /opt/s381/action-shell /bin/sh
+
+ENV PATH=/usr/local/bin:/usr/bin:/bin
+ENTRYPOINT ["/opt/s381/codex-adapter"]

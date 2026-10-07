@@ -8,11 +8,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TASKS = sorted(p.name for p in (ROOT / "packs/l2").iterdir() if (p / "task.yaml").is_file())
 ARMS = ("bash", "guards-contracts", "fences")
+ACTION_CONSTRAINT = "\n\nExperiment constraint: use shell commands for every workspace read, write, test, and git action. Do not use apply_patch, file-edit, MCP, web, or other action tools. The shell is the measured interface."
 
 def digest(p: Path) -> str: return hashlib.sha256(p.read_bytes()).hexdigest()
 def json_digest(v: object) -> str: return hashlib.sha256(json.dumps(v, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 def tree_digest(p: Path) -> str:
     return hashlib.sha256("".join(f"{x.relative_to(p)}:{digest(x)}\n" for x in sorted(p.rglob("*")) if x.is_file()).encode()).hexdigest()
+def validate_manifest(m: dict) -> None:
+    claimed=m.get("manifest_sha256"); unsigned={key:value for key,value in m.items() if key!="manifest_sha256"}
+    if not isinstance(claimed,str) or json_digest(unsigned)!=claimed: raise ValueError("manifest digest is invalid")
 def classify(text: str) -> str:
     value = text.lower()
     if "command not found" in value or "not recognized as an internal" in value: return "command_not_found"
@@ -30,7 +34,14 @@ def prepare(a: argparse.Namespace) -> int:
     opts = json.loads(a.model_options)
     if not isinstance(opts, dict): raise ValueError("--model-options must be a JSON object")
     out = Path(a.output); out.mkdir(parents=True, exist_ok=False)
-    m = {"schema":"bashsharp-l2-v2", "story_id":"050a68a821a9", "pack":"l2", "tasks":[{"id":t,"task_sha256":digest(ROOT/"packs/l2"/t/"task.yaml"),"fixture_tree_sha256":tree_digest(ROOT/"packs/l2"/t/"fixture")} for t in TASKS], "k":a.k, "model":a.model, "agent":a.agent, "seed":a.seed, "model_options":opts, "model_options_sha256":json_digest(opts), "candidate_path":str(candidate), "candidate_sha256":digest(candidate), "budget_seconds":a.budget_seconds, "isolation":{"required":True,"method":"oci-or-separate-os-user","mounts":"fixture+candidate only","evaluator_outside_principal":True}, "arms":{"bash":{"dialect":"off","shell_args":[],"prelude":None},"guards-contracts":{"dialect":"on","shell_args":["--bashpp"],"prelude":"arms/guards-contracts.bsh"},"fences":{"dialect":"on","shell_args":["--bashpp"],"prelude":"arms/fences.bsh"}}, "pricing":{"usd":"unknown","reason":"dollars remain unknown without provider pricing evidence"}}
+    if candidate.read_bytes()[:4] != b"\x7fELF": raise ValueError("candidate must be a Linux ELF executable")
+    task_rows=[]
+    for task in TASKS:
+        fixture=ROOT/"packs/l2"/task/"fixture"; task_file=fixture/"TASK.md"
+        if not task_file.is_file(): raise ValueError(f"{task} fixture is missing TASK.md")
+        prompt="Read TASK.md and do the task."
+        task_rows.append({"id":task,"task_sha256":digest(ROOT/"packs/l2"/task/"task.yaml"),"fixture_tree_sha256":tree_digest(fixture),"prompt":prompt,"task_prompt_sha256":digest(task_file),"provider_prompt_sha256":hashlib.sha256((prompt+ACTION_CONSTRAINT).encode()).hexdigest()})
+    m = {"schema":"bashsharp-l2-v3", "story_id":"050a68a821a9", "pack":"l2", "provider":"codex", "provider_cli":"codex-cli 0.157.1", "tasks":task_rows, "k":a.k, "model":a.model, "agent":"codex-cli/0.157.1", "seed":a.seed, "model_options":opts, "model_options_sha256":json_digest(opts), "candidate_path":str(candidate), "candidate_sha256":digest(candidate), "budget_seconds":a.budget_seconds, "isolation":{"required":True,"method":"oci","mounts":"fixture+candidate+arm-assets+runtime-secret","evaluator_outside_principal":True,"shell_enforcement":"container /bin/sh and /bin/bash are arm wrapper"}, "arms":{"bash":{"dialect":"off","shell_args":[],"prelude":None},"guards-contracts":{"dialect":"on","shell_args":["--bashpp"],"prelude":"arms/guards-contracts.bsh"},"fences":{"dialect":"on","shell_args":["--bashpp"],"prelude":"arms/fences.bsh"}}, "pricing":{"usd":"unknown","reason":"dollars remain unknown without provider pricing evidence"}}
     m["manifest_sha256"] = json_digest(m)
     (out/"manifest.json").write_text(json.dumps(m, indent=2, sort_keys=True)+"\n"); print(out/"manifest.json"); return 0
 
@@ -46,13 +57,14 @@ def rows(p: Path) -> list[dict]:
     return answer
 
 def validate(m: dict, raw: list[dict]) -> None:
-    need={"task","repetition","arm","points","fail","tokens","token_source","model","agent","candidate_sha256","fixture_tree_sha256","model_options_sha256","manifest_sha256","terminal_output"}
+    need={"task","repetition","arm","points","fail","tokens","token_source","model","agent","provider","provider_cli","provider_image_id","candidate_sha256","fixture_tree_sha256","model_options_sha256","manifest_sha256","terminal_output","negative_control_sha256"}
     expected={(x["id"],r,a) for x in m["tasks"] for r in range(1,m["k"]+1) for a in ARMS}; fixtures={x["id"]:x["fixture_tree_sha256"] for x in m["tasks"]}; seen=set()
+    image_ids=set()
     for index,row in enumerate(raw,1):
         row.setdefault("_line",index)
+        if row.get("void"): raise ValueError(f"raw row {row['_line']} is void: {row.get('void_reason', 'no reason')}; void attempts cannot enter paired evidence")
         missing=need-row.keys()
         if missing: raise ValueError(f"raw row {row['_line']} missing fields: {', '.join(sorted(missing))}")
-        if row.get("void"): raise ValueError(f"raw row {row['_line']} is void; void attempts cannot enter paired evidence")
         key=(row["task"],row["repetition"],row["arm"])
         if not isinstance(row["repetition"],int) or key not in expected: raise ValueError(f"raw row {row['_line']} has invalid task/repetition/arm")
         if key in seen: raise ValueError(f"duplicate task/repetition/arm row: {key}")
@@ -60,12 +72,16 @@ def validate(m: dict, raw: list[dict]) -> None:
         if not isinstance(row["points"],(int,float)) or not isinstance(row["fail"],bool): raise ValueError(f"raw row {row['_line']} has invalid grade")
         if not isinstance(row["tokens"],int) or row["tokens"]<0 or row["token_source"] in ("",None,"unknown"): raise ValueError(f"raw row {row['_line']} has unknown/invalid token cost")
         if row["model"]!=m["model"] or row["agent"]!=m["agent"]: raise ValueError(f"raw row {row['_line']} mixes model or agent")
+        if row["provider"]!=m["provider"] or row["provider_cli"]!=m["provider_cli"]: raise ValueError(f"raw row {row['_line']} mixes provider or provider CLI")
+        if not isinstance(row["provider_image_id"],str) or not row["provider_image_id"]: raise ValueError(f"raw row {row['_line']} has no provider image identity")
+        image_ids.add(row["provider_image_id"])
         if row["candidate_sha256"]!=m["candidate_sha256"] or row["fixture_tree_sha256"]!=fixtures[row["task"]]: raise ValueError(f"raw row {row['_line']} mixes candidate or fixture digest")
         if row["model_options_sha256"]!=m["model_options_sha256"] or row["manifest_sha256"]!=m["manifest_sha256"]: raise ValueError(f"raw row {row['_line']} has mixed model options or manifest")
     if seen!=expected: raise ValueError(f"raw rows are not exactly paired: expected {len(expected)}, got {len(seen)}")
+    if len(image_ids)!=1: raise ValueError("raw rows mix provider images")
 
 def report(a: argparse.Namespace) -> int:
-    m=json.loads(Path(a.manifest).read_text()); raw=rows(Path(a.raw)); validate(m,raw)
+    m=json.loads(Path(a.manifest).read_text()); validate_manifest(m); raw=rows(Path(a.raw)); validate(m,raw)
     for r in raw: r.pop("_line",None); r["instance_id"]=f"{r['task']}#{r['repetition']}"; r["resolved"]=bool(r["points"]==2 and not r["fail"]); r["failure_class"]=classify(str(r["terminal_output"]))
     normalized=Path(a.output).with_suffix(".jsonl"); normalized.write_text("".join(json.dumps(r,sort_keys=True)+"\n" for r in raw))
     paired={}
@@ -82,7 +98,7 @@ def report(a: argparse.Namespace) -> int:
 
 def main() -> int:
     p=argparse.ArgumentParser(); sub=p.add_subparsers(dest="command",required=True)
-    x=sub.add_parser("prepare"); [x.add_argument(*z,**kw) for z,kw in [(("--output",),{"required":True}),(("--candidate",),{"required":True}),(("--model",),{"required":True}),(("--agent",),{"required":True}),(("--seed",),{"required":True}),(("--k",),{"type":int,"default":3}),(("--budget-seconds",),{"type":int,"default":600}),(("--model-options",),{"default":"{}"})]]
+    x=sub.add_parser("prepare"); [x.add_argument(*z,**kw) for z,kw in [(("--output",),{"required":True}),(("--candidate",),{"required":True}),(("--model",),{"required":True}),(("--seed",),{"required":True}),(("--k",),{"type":int,"default":3}),(("--budget-seconds",),{"type":int,"default":60}),(("--model-options",),{"default":"{}"})]]
     x=sub.add_parser("report"); [x.add_argument(*z,required=True) for z in (("--manifest",),("--raw",),("--output",),("--bashy",))]
     try: return prepare(p.parse_args()) if sys.argv[1]=="prepare" else report(p.parse_args())
     except (OSError,ValueError,json.JSONDecodeError) as e: print(f"bashsharp L2 experiment: {e}",file=sys.stderr); return 2

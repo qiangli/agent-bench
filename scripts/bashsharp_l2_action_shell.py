@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
 """Shell adapter used at the agent tool boundary by the three L2 arms."""
 from __future__ import annotations
-import os, subprocess, sys, tempfile
+import os, shlex, subprocess, sys, tempfile
 from pathlib import Path
 PRELUDE = {"guards-contracts": "guards-contracts.bsh", "fences": "fences.bsh"}
 def main(argv: list[str]) -> int:
     arm, candidate = os.environ.get("BASHY_EXPERIMENT_ARM", ""), os.environ.get("BASHY_EXPERIMENT_CANDIDATE", "")
     assets = Path(os.environ.get("BASHY_EXPERIMENT_ASSETS", ""))
     if arm not in ("bash", *PRELUDE) or not candidate or not Path(candidate).is_file(): raise ValueError("set a valid BASHY_EXPERIMENT_ARM and BASHY_EXPERIMENT_CANDIDATE")
-    if len(argv) != 2 or argv[0] != "-c": raise ValueError("experiment action shell accepts exactly: -c SCRIPT")
+    if not argv: raise ValueError("experiment action shell requires a command or script")
+    shell_command = len(argv) == 2 and argv[0] in ("-c", "-lc")
+    script = argv[1] if shell_command else "exec " + shlex.join([candidate, *argv])
     # Plain Bash is the candidate's ordinary Bash mode.  POSIX mode would be
     # a fourth, semantically different baseline rather than a fair control.
-    if arm == "bash": return subprocess.run([candidate, "-c", argv[1]], check=False).returncode
+    if arm == "bash":
+        command = [candidate, "-c", script] if shell_command else [candidate, *argv]
+        return subprocess.run(command, check=False).returncode
     prelude = assets / PRELUDE[arm]
     if not prelude.is_file(): raise ValueError("experiment arm prelude is missing")
     with tempfile.NamedTemporaryFile(mode="w", prefix="bashsharp-l2-action-", suffix=".bsh", delete=False) as action:
-        action.write(argv[1]); action_path = action.name
+        action.write(script); action_path = action.name
     try:
         return subprocess.run([candidate, "--bashpp", str(prelude)], env=dict(os.environ, BASHY_EXPERIMENT_ACTION=action_path), check=False).returncode
     finally: Path(action_path).unlink(missing_ok=True)

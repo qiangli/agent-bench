@@ -1,13 +1,33 @@
-import importlib.util, json, os, shutil, tempfile, unittest
+import importlib.util, json, os, shutil, sys, tempfile, unittest
 from pathlib import Path
 from unittest import mock
+sys.path.insert(0,str(Path(__file__).parent))
 SPEC=importlib.util.spec_from_file_location("experiment",Path(__file__).with_name("bashsharp_l2_experiment.py")); experiment=importlib.util.module_from_spec(SPEC); SPEC.loader.exec_module(experiment)
 SHELL=importlib.util.spec_from_file_location("action_shell",Path(__file__).with_name("bashsharp_l2_action_shell.py")); action_shell=importlib.util.module_from_spec(SHELL); SHELL.loader.exec_module(action_shell)
+EXECUTOR=importlib.util.spec_from_file_location("executor",Path(__file__).with_name("bashsharp_l2_executor.py")); executor=importlib.util.module_from_spec(EXECUTOR); EXECUTOR.loader.exec_module(executor)
+ADAPTER=importlib.util.spec_from_file_location("adapter",Path(__file__).with_name("bashsharp_l2_codex_adapter.py")); adapter=importlib.util.module_from_spec(ADAPTER); ADAPTER.loader.exec_module(adapter)
 class ExperimentTest(unittest.TestCase):
  def manifest(self):
-  m={"k":3,"model":"m","agent":"a","candidate_sha256":"c","model_options_sha256":"o","manifest_sha256":"z","pricing":{"usd":"unknown"},"tasks":[{"id":"t01","fixture_tree_sha256":"f"}]}; return m
- def row(self,r,arm): return {"task":"t01","repetition":r,"arm":arm,"points":2,"fail":False,"tokens":4,"token_source":"provider","terminal_output":"command not found","model":"m","agent":"a","candidate_sha256":"c","fixture_tree_sha256":"f","model_options_sha256":"o","manifest_sha256":"z"}
+  m={"k":3,"model":"m","agent":"a","provider":"codex","provider_cli":"codex-cli 0.157.1","candidate_sha256":"c","model_options_sha256":"o","pricing":{"usd":"unknown"},"tasks":[{"id":"t01","fixture_tree_sha256":"f"}]}; m["manifest_sha256"]=experiment.json_digest(m); return m
+ def row(self,r,arm): return {"task":"t01","repetition":r,"arm":arm,"points":2,"fail":False,"tokens":4,"token_source":"provider","terminal_output":"command not found","model":"m","agent":"a","provider":"codex","provider_cli":"codex-cli 0.157.1","provider_image_id":"sha256:image","negative_control_sha256":"n","candidate_sha256":"c","fixture_tree_sha256":"f","model_options_sha256":"o","manifest_sha256":self.manifest()["manifest_sha256"]}
  def test_taxonomy(self): self.assertEqual(experiment.classify("bash: nope: command not found"),"command_not_found")
+ def test_manifest_digest_is_not_self_asserted(self):
+  m={"schema":"x"}; m["manifest_sha256"]=experiment.json_digest(m.copy()); experiment.validate_manifest(m)
+  m["schema"]="changed"
+  with self.assertRaisesRegex(ValueError,"manifest digest"): experiment.validate_manifest(m)
+ def test_schedule_is_complete_and_arm_balanced(self):
+  m={"seed":381,"k":3,"tasks":[{"id":f"t{i:02}"} for i in range(20)]}; jobs=executor.schedule(m)
+  self.assertEqual(len(jobs),180)
+  self.assertEqual({a:sum(job[2]==a for job in jobs) for a in experiment.ARMS},{a:60 for a in experiment.ARMS})
+ def test_adapter_redacts_runtime_auth_values(self):
+  auth=json.dumps({"tokens":{"access_token":"secret-access-token-value","refresh_token":"secret-refresh-token-value"}})
+  secrets=adapter.secret_literals(auth); output=adapter.redact("x secret-access-token-value y",secrets)
+  self.assertNotIn("secret-access-token-value",output); self.assertIn("[REDACTED]",output)
+ def test_timeout_stops_named_container(self):
+  process=mock.Mock(); process.communicate.side_effect=[__import__('subprocess').TimeoutExpired(['podman'],1,output='partial'),('tail','err')]; process.returncode=None
+  with mock.patch.object(executor.subprocess,"Popen",return_value=process),mock.patch.object(executor,"stop_container") as stop:
+   code,out,err,timed=executor.bounded_container(["podman"],"podman","trial",1)
+  self.assertEqual((code,out,err,timed),(124,"tail","err",True)); stop.assert_called_once_with("podman","trial")
  def test_duplicate_and_unknown_cost_rejected(self):
   raw=[self.row(r,a) for r in range(1,4) for a in experiment.ARMS]; raw.append(self.row(1,"bash"))
   with self.assertRaisesRegex(ValueError,"duplicate"): experiment.validate(self.manifest(),raw)
@@ -19,6 +39,12 @@ class ExperimentTest(unittest.TestCase):
    env={"BASHY_EXPERIMENT_ARM":"bash","BASHY_EXPERIMENT_CANDIDATE":str(candidate),"BASHY_EXPERIMENT_ASSETS":str(assets)}
    with mock.patch.dict(os.environ,env,clear=False),mock.patch.object(action_shell.subprocess,"run") as run:
     run.return_value.returncode=0; self.assertEqual(action_shell.main(["-c","echo hi"]),0)
+   self.assertEqual(run.call_args.args[0],[str(candidate),"-c","echo hi"])
+   with mock.patch.dict(os.environ,env,clear=False),mock.patch.object(action_shell.subprocess,"run") as run:
+    run.return_value.returncode=0; self.assertEqual(action_shell.main(["script.sh","a b"]),0)
+   self.assertEqual(run.call_args.args[0],[str(candidate),"script.sh","a b"])
+   with mock.patch.dict(os.environ,env,clear=False),mock.patch.object(action_shell.subprocess,"run") as run:
+    run.return_value.returncode=0; self.assertEqual(action_shell.main(["-lc","echo hi"]),0)
    self.assertEqual(run.call_args.args[0],[str(candidate),"-c","echo hi"])
  @unittest.skipUnless(shutil.which("bashy"),"bashy required for paired statistics")
  def test_report(self):
