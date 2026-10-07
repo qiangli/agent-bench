@@ -120,8 +120,12 @@ provider containers.
 A timeout stops and removes the named container, preserves partial redacted
 output, grades the resulting workspace, and writes a genuine failed outcome.
 It is never selectively rerun or excluded. Infrastructure/authentication and
-executor failures remain durable voids, and any void blocks the report.
-`report` also fails closed on duplicates, missing pairs, mixed provenance, or
+executor failures are recorded as void attempts in the append-only raw history.
+A void key may be retried only while every prior attempt for that key is void;
+once one valid outcome exists, that key is complete. The report accepts void
+history when every scheduled key has exactly one valid outcome, and includes
+the full attempt history and retry accounting. It fails closed on an unresolved
+key, duplicate valid outcomes, malformed void attempts, mixed provenance, or
 an action outside the measured shell interface. All 180 scheduled outcomes
 enter paired success-rate statistics. Missing final usage is explicit; cost per
 solve is a known-token lower bound plus an unknown-row count.
@@ -158,7 +162,14 @@ Scoring is identical for all three arms: a normal completion with zero shell
 commands is a strict protocol failure (0 points, `fail=true`) while retaining
 provider usage. Any off-interface action reported in `forbidden_action_types`
 is also a strict protocol failure (0 points, `fail=true`), retains real usage,
-and is never classified as infrastructure void or removed from scoring. Only
-infra/auth/void attempts may be retried, and only when all prior attempts for
-the key are void; reports require exactly one nonvoid outcome per key and keep
-void history with attempt accounting.
+and remains a scored outcome rather than an infrastructure void. Infra/auth/
+executor void attempts may be retried only when all prior attempts for the key
+are void; raw history is append-only and the report requires exactly one valid
+outcome per key.
+
+`failure_taxonomy` counts only unresolved scored outcomes (`resolved=false`),
+using timeout/protocol metadata and terminal output to categorize the failure.
+Successful outcomes are not failures even when their terminal output contains
+text that resembles a failure signature; those classifications, when present,
+are reported separately in `resolved_terminal_output`. Void attempts are
+accounted for in `attempt_accounting`, not counted as scored failures.

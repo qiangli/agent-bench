@@ -111,7 +111,9 @@ def report(a: argparse.Namespace) -> int:
     known_total=sum(r["tokens"] for r in raw if isinstance(r["tokens"],int)); unknown_total=sum(r["tokens"] is None for r in raw)
     for r in attempts: r.pop("_line",None)
     attempt_counts=Counter((r["task"],r["repetition"],r["arm"]) for r in attempts)
-    evidence={"manifest":m,"attempt_accounting":{"total_attempts":len(attempts),"void_attempts":sum(bool(r.get("void")) for r in attempts),"valid_outcomes":len(raw),"retried_keys":sum(count>1 for count in attempt_counts.values()),"attempts_per_key":{f"{t}#{rep}/{arm}":count for (t,rep,arm),count in sorted(attempt_counts.items())}},"raw_rows":attempts,"paired":paired,"cost_per_solve":cps,"failure_taxonomy":dict(Counter(r["failure_class"] for r in raw)),"tokens":{"known_total_lower_bound":known_total,"unknown_rows":unknown_total},"pricing":m["pricing"]}
+    unresolved=[r for r in raw if not r["resolved"]]
+    resolved_terminal=Counter(r["failure_class"] for r in raw if r["resolved"])
+    evidence={"manifest":m,"attempt_accounting":{"total_attempts":len(attempts),"void_attempts":sum(bool(r.get("void")) for r in attempts),"valid_outcomes":len(raw),"retried_keys":sum(count>1 for count in attempt_counts.values()),"attempts_per_key":{f"{t}#{rep}/{arm}":count for (t,rep,arm),count in sorted(attempt_counts.items())}},"raw_rows":attempts,"paired":paired,"cost_per_solve":cps,"failure_taxonomy":dict(Counter(r["failure_class"] for r in unresolved)),"resolved_terminal_output":dict(resolved_terminal),"tokens":{"known_total_lower_bound":known_total,"unknown_rows":unknown_total},"pricing":m["pricing"]}
     Path(a.output).write_text(json.dumps(evidence,indent=2,sort_keys=True)+"\n"); print(a.output); return 0
 
 def main() -> int:

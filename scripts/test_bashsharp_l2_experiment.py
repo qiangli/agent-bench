@@ -105,5 +105,5 @@ class ExperimentTest(unittest.TestCase):
  def test_report(self):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d); m=self.manifest(); mp=root/"m.json"; mp.write_text(json.dumps(m)); all_rows=[self.row(r,a) for r in range(1,4) for a in experiment.ARMS]; all_rows[0].update(tokens=None,token_source="unknown-no-final-usage",timed_out=True,points=0,fail=True); raw=root/"raw.jsonl"; raw.write_text("".join(json.dumps(row)+"\n" for row in all_rows)); out=root/"e.json"
-   self.assertEqual(experiment.report(type("A",(),{"manifest":str(mp),"raw":str(raw),"output":str(out),"bashy":shutil.which("bashy")})()),0); evidence=json.loads(out.read_text()); self.assertEqual(evidence["tokens"],{"known_total_lower_bound":32,"unknown_rows":1}); self.assertEqual(evidence["failure_taxonomy"]["timeout"],1)
+   self.assertEqual(experiment.report(type("A",(),{"manifest":str(mp),"raw":str(raw),"output":str(out),"bashy":shutil.which("bashy")})()),0); evidence=json.loads(out.read_text()); self.assertEqual(evidence["tokens"],{"known_total_lower_bound":32,"unknown_rows":1}); self.assertEqual(evidence["failure_taxonomy"],{"timeout":1}); self.assertEqual(evidence["resolved_terminal_output"],{"command_not_found":8})
 if __name__=="__main__": unittest.main()
