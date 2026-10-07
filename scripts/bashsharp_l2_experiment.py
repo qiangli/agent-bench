@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """Fail-closed manifest and evidence gate for Sprint 381's paired L2 run."""
 from __future__ import annotations
-import argparse, hashlib, json, os, subprocess, sys
+import argparse, hashlib, json, os, random, statistics, subprocess, sys
 from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TASKS = sorted(p.name for p in (ROOT / "packs/l2").iterdir() if (p / "task.yaml").is_file())
 ARMS = ("bash", "guards-contracts", "fences")
+# The frozen Sprint 381 story. `prepare --story-id` defaults to this so every
+# existing caller (and the frozen protocol it labels) is unchanged; pass the
+# Sprint 287 follow-up story to label a fresh run without touching tasks, K,
+# seed, model, budget, candidate, or image.
+DEFAULT_STORY_ID = "050a68a821a9"
 ACTION_CONSTRAINT = "\n\nExperiment constraint: use shell commands for every workspace read, write, test, and git action. Do not use apply_patch, file-edit, MCP, web, or other action tools. The shell is the measured interface."
 
 def digest(p: Path) -> str: return hashlib.sha256(p.read_bytes()).hexdigest()
@@ -38,6 +43,7 @@ def prepare(a: argparse.Namespace) -> int:
     opts = json.loads(a.model_options)
     if not isinstance(opts, dict): raise ValueError("--model-options must be a JSON object")
     if a.model != "gpt-6-luna" or opts != {"model_reasoning_effort":"low"}: raise ValueError("the frozen provider configuration is gpt-6-luna with low reasoning effort")
+    if not isinstance(a.story_id, str) or not a.story_id.strip(): raise ValueError("--story-id must be a non-empty label")
     out = Path(a.output); out.mkdir(parents=True, exist_ok=False)
     if not is_linux_arm64_elf(candidate): raise ValueError("candidate must be a Linux/arm64 ELF executable")
     task_rows=[]
@@ -46,7 +52,7 @@ def prepare(a: argparse.Namespace) -> int:
         if not task_file.is_file(): raise ValueError(f"{task} fixture is missing TASK.md")
         prompt="Read TASK.md and do the task."
         task_rows.append({"id":task,"task_sha256":digest(ROOT/"packs/l2"/task/"task.yaml"),"fixture_tree_sha256":tree_digest(fixture),"prompt":prompt,"task_prompt_sha256":digest(task_file),"provider_prompt_sha256":hashlib.sha256((prompt+ACTION_CONSTRAINT).encode()).hexdigest()})
-    m = {"schema":"bashsharp-l2-v4", "story_id":"050a68a821a9", "pack":"l2", "provider":"codex", "provider_cli":"codex-cli 0.157.1", "tasks":task_rows, "k":a.k, "model":a.model, "agent":"codex-cli/0.157.1", "seed":a.seed, "model_options":opts, "model_options_sha256":json_digest(opts), "candidate_path":str(candidate), "candidate_sha256":digest(candidate), "arm_assets_tree_sha256":tree_digest(ROOT/"experiments/bashsharp-l2/arms"), "budget_seconds":a.budget_seconds, "isolation":{"required":True,"method":"oci","platform":"linux/arm64","mounts":"fixture+candidate+arm-assets+runtime-secret","evaluator_outside_principal":True,"shell_enforcement":"container /bin/sh and /bin/bash are arm wrapper"}, "arms":{"bash":{"dialect":"explicitly-off","shell_args":["--no-bashpp"],"prelude":None},"guards-contracts":{"dialect":"on","shell_args":["--bashpp"],"prelude":"arms/guards-contracts.bsh"},"fences":{"dialect":"on","shell_args":["--bashpp"],"prelude":"arms/fences.bsh"}}, "pricing":{"usd":"unknown","reason":"dollars remain unknown without provider pricing evidence"}}
+    m = {"schema":"bashsharp-l2-v4", "story_id":a.story_id, "pack":"l2", "provider":"codex", "provider_cli":"codex-cli 0.157.1", "tasks":task_rows, "k":a.k, "model":a.model, "agent":"codex-cli/0.157.1", "seed":a.seed, "model_options":opts, "model_options_sha256":json_digest(opts), "candidate_path":str(candidate), "candidate_sha256":digest(candidate), "arm_assets_tree_sha256":tree_digest(ROOT/"experiments/bashsharp-l2/arms"), "budget_seconds":a.budget_seconds, "isolation":{"required":True,"method":"oci","platform":"linux/arm64","mounts":"fixture+candidate+arm-assets+runtime-secret","evaluator_outside_principal":True,"shell_enforcement":"container /bin/sh and /bin/bash are arm wrapper"}, "arms":{"bash":{"dialect":"explicitly-off","shell_args":["--no-bashpp"],"prelude":None},"guards-contracts":{"dialect":"on","shell_args":["--bashpp"],"prelude":"arms/guards-contracts.bsh"},"fences":{"dialect":"on","shell_args":["--bashpp"],"prelude":"arms/fences.bsh"}}, "pricing":{"usd":"unknown","reason":"dollars remain unknown without provider pricing evidence"}}
     m["manifest_sha256"] = json_digest(m)
     (out/"manifest.json").write_text(json.dumps(m, indent=2, sort_keys=True)+"\n"); print(out/"manifest.json"); return 0
 
@@ -94,17 +100,48 @@ def validate(m: dict, raw: list[dict]) -> None:
     if seen!=expected: raise ValueError(f"raw rows are not exactly paired: expected {len(expected)} nonvoid outcomes, got {len(seen)}")
     if len(image_ids)!=1: raise ValueError("raw rows mix provider images")
 
+def task_clustered_bootstrap(raw: list[dict], a: str, b: str, seed: int, iterations: int = 10000) -> dict:
+    """Percentile bootstrap CI for resolved(b) - resolved(a), clustered by task.
+
+    Pairs the two arms within each (task, repetition) first, then clusters
+    every repetition of a task into one bucket and resamples *tasks* (not
+    trials) with replacement, so the K=3 repetitions of a task never count as
+    three independent data points. Deterministic: a fixed seed drives a
+    private random.Random, independent of the stdlib global RNG.
+    """
+    by_key = {(r["task"], r["repetition"], r["arm"]): r["resolved"] for r in raw}
+    diffs_by_task: dict[str, list[int]] = {}
+    for task, repetition, arm in by_key:
+        if arm != a: continue
+        other = (task, repetition, b)
+        if other not in by_key: continue
+        diffs_by_task.setdefault(task, []).append(int(by_key[other]) - int(by_key[(task, repetition, arm)]))
+    tasks = sorted(diffs_by_task)
+    if not tasks: raise ValueError(f"no task has a paired outcome for both {a} and {b}")
+    observed = statistics.fmean(d for t in tasks for d in diffs_by_task[t])
+    rng = random.Random(seed)
+    n = len(tasks)
+    means = []
+    for _ in range(iterations):
+        sample = [tasks[rng.randrange(n)] for _ in range(n)]
+        means.append(statistics.fmean(d for t in sample for d in diffs_by_task[t]))
+    means.sort()
+    lo = means[max(0, int(0.025 * iterations))]
+    hi = means[min(iterations, int(0.975 * iterations)) - 1]
+    return {"tasks": n, "diff_mean": observed, "ci95": [lo, hi], "iterations": iterations, "seed": seed}
+
 def report(a: argparse.Namespace) -> int:
     m=json.loads(Path(a.manifest).read_text()); validate_manifest(m); attempts=rows(Path(a.raw)); validate(m,attempts)
     raw=[r for r in attempts if not r.get("void")]
     for r in raw: r.pop("_line",None); r["instance_id"]=f"{r['task']}#{r['repetition']}"; r["resolved"]=bool(r["points"]==2 and not r["fail"]); r["failure_class"]="timeout" if r.get("timed_out") else "strict_protocol" if r.get("protocol_failure") else classify(str(r["terminal_output"]))
     normalized=Path(a.output).with_suffix(".jsonl"); normalized.write_text("".join(json.dumps(r,sort_keys=True)+"\n" for r in raw))
-    paired={}
+    paired={}; paired_bootstrap={}
     for left,right in (("bash","guards-contracts"),("bash","fences"),("guards-contracts","fences")):
         done=subprocess.run([a.bashy,"stats","paired","--json","--arm","arm","--a",left,"--b",right,str(normalized)],text=True,capture_output=True)
         if done.returncode: raise ValueError(f"paired stats failed: {done.stderr.strip()}")
         try: paired[f"{right}-minus-{left}"]=json.loads(done.stdout)
         except json.JSONDecodeError as e: raise ValueError("paired stats did not return JSON") from e
+        paired_bootstrap[f"{right}-minus-{left}"]=task_clustered_bootstrap(raw,left,right,seed=m["seed"])
     cps={}
     for arm in ARMS:
         own=[r for r in raw if r["arm"]==arm]; solved=sum(r["resolved"] for r in own); known=sum(r["tokens"] for r in own if isinstance(r["tokens"],int)); unknown=sum(r["tokens"] is None for r in own); cps[arm]={"solves":solved,"known_tokens_lower_bound":known,"unknown_token_rows":unknown,"tokens_per_solve_lower_bound":known/solved if solved else None}
@@ -113,12 +150,12 @@ def report(a: argparse.Namespace) -> int:
     attempt_counts=Counter((r["task"],r["repetition"],r["arm"]) for r in attempts)
     unresolved=[r for r in raw if not r["resolved"]]
     resolved_terminal=Counter(r["failure_class"] for r in raw if r["resolved"])
-    evidence={"manifest":m,"attempt_accounting":{"total_attempts":len(attempts),"void_attempts":sum(bool(r.get("void")) for r in attempts),"valid_outcomes":len(raw),"retried_keys":sum(count>1 for count in attempt_counts.values()),"attempts_per_key":{f"{t}#{rep}/{arm}":count for (t,rep,arm),count in sorted(attempt_counts.items())}},"raw_rows":attempts,"paired":paired,"cost_per_solve":cps,"failure_taxonomy":dict(Counter(r["failure_class"] for r in unresolved)),"resolved_terminal_output":dict(resolved_terminal),"tokens":{"known_total_lower_bound":known_total,"unknown_rows":unknown_total},"pricing":m["pricing"]}
+    evidence={"manifest":m,"attempt_accounting":{"total_attempts":len(attempts),"void_attempts":sum(bool(r.get("void")) for r in attempts),"valid_outcomes":len(raw),"retried_keys":sum(count>1 for count in attempt_counts.values()),"attempts_per_key":{f"{t}#{rep}/{arm}":count for (t,rep,arm),count in sorted(attempt_counts.items())}},"raw_rows":attempts,"paired":paired,"paired_bootstrap":paired_bootstrap,"cost_per_solve":cps,"failure_taxonomy":dict(Counter(r["failure_class"] for r in unresolved)),"resolved_terminal_output":dict(resolved_terminal),"tokens":{"known_total_lower_bound":known_total,"unknown_rows":unknown_total},"pricing":m["pricing"]}
     Path(a.output).write_text(json.dumps(evidence,indent=2,sort_keys=True)+"\n"); print(a.output); return 0
 
 def main() -> int:
     p=argparse.ArgumentParser(); sub=p.add_subparsers(dest="command",required=True)
-    x=sub.add_parser("prepare"); [x.add_argument(*z,**kw) for z,kw in [(("--output",),{"required":True}),(("--candidate",),{"required":True}),(("--model",),{"required":True}),(("--seed",),{"required":True}),(("--k",),{"type":int,"default":3}),(("--budget-seconds",),{"type":int,"default":60}),(("--model-options",),{"default":"{}"})]]
+    x=sub.add_parser("prepare"); [x.add_argument(*z,**kw) for z,kw in [(("--output",),{"required":True}),(("--candidate",),{"required":True}),(("--model",),{"required":True}),(("--seed",),{"required":True}),(("--k",),{"type":int,"default":3}),(("--budget-seconds",),{"type":int,"default":60}),(("--model-options",),{"default":"{}"}),(("--story-id",),{"default":DEFAULT_STORY_ID})]]
     x=sub.add_parser("report"); [x.add_argument(*z,required=True) for z in (("--manifest",),("--raw",),("--output",),("--bashy",))]
     try: return prepare(p.parse_args()) if sys.argv[1]=="prepare" else report(p.parse_args())
     except (OSError,ValueError,json.JSONDecodeError) as e: print(f"bashsharp L2 experiment: {e}",file=sys.stderr); return 2

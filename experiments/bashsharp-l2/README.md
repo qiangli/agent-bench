@@ -72,6 +72,11 @@ python3 scripts/bashsharp_l2_experiment.py prepare \
   --candidate "$WORKDIR/bashy/bin/linux/bashy" \
   --model gpt-6-luna --seed 381 --k 3 --budget-seconds 60 \
   --model-options '{"model_reasoning_effort":"low"}'
+  # --story-id defaults to the frozen Sprint 381 story 050a68a821a9, so every
+  # existing caller is unchanged. Pass --story-id 2a5323bb1372 (the Sprint 287
+  # follow-up story) to label a fresh comparison run with the corrected
+  # fences/guards-contracts prelude; tasks, K, seed, model, budget, candidate,
+  # and image stay frozen — only the label and the arm prelude differ.
 
 # One real provider trial first. This is smoke evidence, not one of the 180.
 cp "$RESULTS_DIR/full/manifest.json" "$RESULTS_DIR/smoke-manifest.json"
@@ -130,6 +135,17 @@ an action outside the measured shell interface. All 180 scheduled outcomes
 enter paired success-rate statistics. Missing final usage is explicit; cost per
 solve is a known-token lower bound plus an unknown-row count.
 
+`evidence.json`'s `paired` block is `bashy stats paired`, clustered by trial
+instance (`task#repetition`). `paired_bootstrap` is a second, complementary
+statistic over the same raw rows: a percentile bootstrap 95% CI for the same
+B-minus-A resolve-rate difference, but clustered by *task* — every arm pair's
+K=3 repetitions of a task are grouped into one bucket, and the bootstrap
+resamples the 20 task buckets (not the 60 trials) with replacement. That
+avoids treating a task's three repetitions as three independent data points
+when they share whatever makes that task easy or hard. It uses a private, seeded `random.Random` (the manifest's frozen seed), so a
+rerun of `report` against the same `raw.jsonl` reproduces it exactly, and it
+makes no model or provider call.
+
 ## Arm enforcement and isolation
 
 `bash` explicitly passes `--no-bashpp`; it does not rely on defaults or the
@@ -139,6 +155,23 @@ the harness-owned action input. It claims no generic postcondition because
 inventing one would change the tasks. `fences` exports the actual command as a
 qualified `~~~sh` method under the same guard and preserves its stdout bytes,
 status, and stderr.
+
+Both arms declare `@effects("read,write,exec")`, not `@guard(effects: ...)`.
+`@effects` both narrows the cap to that envelope *and* vouches that commands
+the Command Atlas cannot classify (a literal nested `sh -c ...`, `rg`, ...)
+really do stay inside it; `@guard` only narrows the cap and denies an
+atlas-unknown command outright regardless of how permissive the cap is, which
+was Sprint 381's near-total guards/fences failure (Story `2a5323bb1372`). That
+vouch is the benchmark's own author asserting the envelope for its own arm
+code, not a claim about transitive containment of whatever a child process
+spawns: an atlas-unknown command that itself opens an opaque network
+connection the Atlas cannot see is not proven contained by this fix, it is
+simply outside what this harness can observe. What the cap-only refusal still
+proves, unchanged, is that any command the Atlas *does* classify outside the
+declared envelope is denied before it runs — `curl` (`net`) and `rm` (atlas
+`destroy`, never implied by `read,write,exec`) both still exit 126 and leave
+their target untouched; see `test_nested_shell_and_atlas_unknown_commands_run_under_declared_effects`
+in `scripts/test_bashsharp_l2_experiment.py`.
 
 The provider image replaces its actual `/bin/sh` and `/bin/bash` with the arm
 wrapper; `$SHELL` is not the enforcement mechanism. The prompt requires shell

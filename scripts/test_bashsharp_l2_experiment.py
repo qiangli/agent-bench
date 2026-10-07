@@ -8,7 +8,7 @@ EXECUTOR=importlib.util.spec_from_file_location("executor",Path(__file__).with_n
 ADAPTER=importlib.util.spec_from_file_location("adapter",Path(__file__).with_name("bashsharp_l2_codex_adapter.py")); adapter=importlib.util.module_from_spec(ADAPTER); ADAPTER.loader.exec_module(adapter)
 class ExperimentTest(unittest.TestCase):
  def manifest(self):
-  m={"schema":"bashsharp-l2-v4","k":3,"model":"m","agent":"a","provider":"codex","provider_cli":"codex-cli 0.157.1","candidate_sha256":"c","arm_assets_tree_sha256":"assets","model_options_sha256":"o","pricing":{"usd":"unknown"},"tasks":[{"id":"t01","fixture_tree_sha256":"f"}]}; m["manifest_sha256"]=experiment.json_digest(m); return m
+  m={"schema":"bashsharp-l2-v4","k":3,"seed":1,"model":"m","agent":"a","provider":"codex","provider_cli":"codex-cli 0.157.1","candidate_sha256":"c","arm_assets_tree_sha256":"assets","model_options_sha256":"o","pricing":{"usd":"unknown"},"tasks":[{"id":"t01","fixture_tree_sha256":"f"}]}; m["manifest_sha256"]=experiment.json_digest(m); return m
  def row(self,r,arm): return {"task":"t01","repetition":r,"arm":arm,"points":2,"fail":False,"tokens":4,"token_source":"codex-turn.completed","terminal_output":"command not found","model":"m","agent":"a","provider":"codex","provider_cli":"codex-cli 0.157.1","provider_image_id":"sha256:image","negative_control_sha256":"n","candidate_sha256":"c","fixture_tree_sha256":"f","arm_assets_tree_sha256":"assets","model_options_sha256":"o","manifest_sha256":self.manifest()["manifest_sha256"]}
  def test_taxonomy(self): self.assertEqual(experiment.classify("bash: nope: command not found"),"command_not_found")
  def test_manifest_digest_is_not_self_asserted(self):
@@ -59,6 +59,44 @@ class ExperimentTest(unittest.TestCase):
    self.assertTrue(experiment.is_linux_arm64_elf(binary))
    header[18:20]=(62).to_bytes(2,"little"); binary.write_bytes(header)
    self.assertFalse(experiment.is_linux_arm64_elf(binary))
+ def fake_candidate(self,root):
+  binary=root/"bashy"; header=bytearray(20); header[:6]=b"\x7fELF\x02\x01"; header[18:20]=(183).to_bytes(2,"little")
+  binary.write_bytes(bytes(header)); binary.chmod(0o755); return binary
+ def test_prepare_labels_story_id_default_and_override(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d); candidate=self.fake_candidate(root)
+   common={"candidate":str(candidate),"model":"gpt-6-luna","seed":381,"k":3,"budget_seconds":60,"model_options":'{"model_reasoning_effort":"low"}'}
+   default_args=type("A",(),{**common,"output":str(root/"default"),"story_id":experiment.DEFAULT_STORY_ID})()
+   self.assertEqual(experiment.prepare(default_args),0)
+   default_manifest=json.loads((root/"default/manifest.json").read_text())
+   self.assertEqual(default_manifest["story_id"],"050a68a821a9")
+   fresh_args=type("A",(),{**common,"output":str(root/"fresh"),"story_id":"2a5323bb1372"})()
+   self.assertEqual(experiment.prepare(fresh_args),0)
+   fresh_manifest=json.loads((root/"fresh/manifest.json").read_text())
+   self.assertEqual(fresh_manifest["story_id"],"2a5323bb1372")
+   # The story-id label is the only difference: the frozen protocol (tasks,
+   # K, seed, model, budget, candidate, arm assets, isolation) is identical.
+   for field in ("schema","k","model","seed","budget_seconds","model_options","candidate_sha256","arm_assets_tree_sha256","tasks","isolation","arms","pricing"):
+    self.assertEqual(fresh_manifest[field],default_manifest[field],field)
+ def test_prepare_rejects_blank_story_id(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d); candidate=self.fake_candidate(root)
+   args=type("A",(),{"output":str(root/"out"),"candidate":str(candidate),"model":"gpt-6-luna","seed":381,"k":3,"budget_seconds":60,"model_options":'{"model_reasoning_effort":"low"}',"story_id":"  "})()
+   with self.assertRaisesRegex(ValueError,"story-id"): experiment.prepare(args)
+ def test_task_clustered_bootstrap_is_deterministic_and_clusters_by_task(self):
+  def mk(task,rep,arm,resolved): return {"task":task,"repetition":rep,"arm":arm,"resolved":resolved}
+  raw=[]
+  for rep in range(1,4):
+   raw.append(mk("t01",rep,"bash",False)); raw.append(mk("t01",rep,"guards",True))   # +1 every repetition
+   raw.append(mk("t02",rep,"bash",True)); raw.append(mk("t02",rep,"guards",True))    # +0 every repetition
+  result=experiment.task_clustered_bootstrap(raw,"bash","guards",seed=381,iterations=500)
+  self.assertEqual(result["tasks"],2)  # clustered by task, not by the 6 paired trials
+  self.assertEqual(result["diff_mean"],0.5)
+  self.assertEqual(result,experiment.task_clustered_bootstrap(raw,"bash","guards",seed=381,iterations=500))
+  self.assertLessEqual(result["ci95"][0],result["diff_mean"]); self.assertGreaterEqual(result["ci95"][1],result["diff_mean"])
+ def test_task_clustered_bootstrap_requires_a_shared_task(self):
+  raw=[{"task":"t01","repetition":1,"arm":"bash","resolved":True}]
+  with self.assertRaisesRegex(ValueError,"no task has a paired outcome"): experiment.task_clustered_bootstrap(raw,"bash","guards",seed=1,iterations=10)
  def test_adapter_redacts_runtime_auth_values(self):
   auth=json.dumps({"tokens":{"access_token":"secret-access-token-value","refresh_token":"secret-refresh-token-value"}})
   secrets=adapter.secret_literals(auth); output=adapter.redact("x secret-access-token-value y",secrets)
@@ -127,6 +165,13 @@ class ExperimentTest(unittest.TestCase):
       # vouches for unclassified commands within the envelope, it does not
       # widen the envelope itself.
       self.assertEqual(action_shell.main(["-lc","curl -s https://example.invalid"]),126)
+      # Same envelope, a different known-and-classified effect: `rm` is
+      # Command Atlas `destroy`, not `read,write,exec`, so it is denied by
+      # the cap itself (not the unknown-command path the fix addresses) and
+      # the target file survives untouched.
+      victim=workspace/"victim.txt"; victim.write_text("do not delete\n")
+      self.assertEqual(action_shell.main(["-lc",f"rm -f {victim}"]),126)
+      self.assertTrue(victim.is_file())
    finally:
     os.chdir(cwd)
  @unittest.skipUnless(shutil.which("bashy"),"bashy required for paired statistics")
