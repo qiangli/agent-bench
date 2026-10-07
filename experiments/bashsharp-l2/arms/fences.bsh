@@ -1,19 +1,31 @@
-# A real Bash# fence is loaded on every action; the source call remains under
-# the same enforced guard/contracts boundary as the guards arm.
-~~~sh as experiment_context
-fence_ready() { :; }
+# The runner exports the action itself as a fence method.  It captures stdout
+# in a harness-owned file so the outer call can replay it byte-for-byte; stderr
+# passes through directly and the status is carried separately.
+experiment_fence_runner() {
+    case "$1" in
+    methods)
+        printf '%s\n' '{"name":"run","effects":["read","write","exec"]}'
+        ;;
+    run)
+        ( source "$BASHY_EXPERIMENT_ACTION" ) >"$BASHY_EXPERIMENT_FENCE_STDOUT"
+        action_status=$?
+        printf '%s\n' "$action_status" >"$BASHY_EXPERIMENT_FENCE_STATUS"
+        return 0
+        ;;
+    esac
+}
+~~~sh as experiment_context !experiment_fence_runner
+The measured shell action is exported as experiment_context.run.
 ~~~
 
 @guard(effects: "read,write,exec")
 @require('test -f "$BASHY_EXPERIMENT_ACTION"')
-@ensure('test -f "$BASHY_EXPERIMENT_ACTION"')
 agentic function experiment_action() {
-    # This is a real qualified Bash# fence invocation.  Keep its stdout and
-    # status out of the action's result: a failed fence stops the action, and
-    # a successful one adds no output before sourcing the model's command.
-    experiment_context.fence_ready()
+    fence_result := experiment_context.run()
     fence_status=$?
     [ "$fence_status" -eq 0 ] || return "$fence_status"
-    source "$BASHY_EXPERIMENT_ACTION"
+    cat "$BASHY_EXPERIMENT_FENCE_STDOUT"
+    IFS= read -r action_status <"$BASHY_EXPERIMENT_FENCE_STATUS" || return 125
+    return "$action_status"
 }
 agentic { experiment_action; }

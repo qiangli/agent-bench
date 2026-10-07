@@ -8,8 +8,8 @@ EXECUTOR=importlib.util.spec_from_file_location("executor",Path(__file__).with_n
 ADAPTER=importlib.util.spec_from_file_location("adapter",Path(__file__).with_name("bashsharp_l2_codex_adapter.py")); adapter=importlib.util.module_from_spec(ADAPTER); ADAPTER.loader.exec_module(adapter)
 class ExperimentTest(unittest.TestCase):
  def manifest(self):
-  m={"k":3,"model":"m","agent":"a","provider":"codex","provider_cli":"codex-cli 0.157.1","candidate_sha256":"c","model_options_sha256":"o","pricing":{"usd":"unknown"},"tasks":[{"id":"t01","fixture_tree_sha256":"f"}]}; m["manifest_sha256"]=experiment.json_digest(m); return m
- def row(self,r,arm): return {"task":"t01","repetition":r,"arm":arm,"points":2,"fail":False,"tokens":4,"token_source":"provider","terminal_output":"command not found","model":"m","agent":"a","provider":"codex","provider_cli":"codex-cli 0.157.1","provider_image_id":"sha256:image","negative_control_sha256":"n","candidate_sha256":"c","fixture_tree_sha256":"f","model_options_sha256":"o","manifest_sha256":self.manifest()["manifest_sha256"]}
+  m={"schema":"bashsharp-l2-v4","k":3,"model":"m","agent":"a","provider":"codex","provider_cli":"codex-cli 0.157.1","candidate_sha256":"c","model_options_sha256":"o","pricing":{"usd":"unknown"},"tasks":[{"id":"t01","fixture_tree_sha256":"f"}]}; m["manifest_sha256"]=experiment.json_digest(m); return m
+ def row(self,r,arm): return {"task":"t01","repetition":r,"arm":arm,"points":2,"fail":False,"tokens":4,"token_source":"codex-turn.completed","terminal_output":"command not found","model":"m","agent":"a","provider":"codex","provider_cli":"codex-cli 0.157.1","provider_image_id":"sha256:image","negative_control_sha256":"n","candidate_sha256":"c","fixture_tree_sha256":"f","model_options_sha256":"o","manifest_sha256":self.manifest()["manifest_sha256"]}
  def test_taxonomy(self): self.assertEqual(experiment.classify("bash: nope: command not found"),"command_not_found")
  def test_manifest_digest_is_not_self_asserted(self):
   m={"schema":"x"}; m["manifest_sha256"]=experiment.json_digest(m.copy()); experiment.validate_manifest(m)
@@ -19,6 +19,12 @@ class ExperimentTest(unittest.TestCase):
   m={"seed":381,"k":3,"tasks":[{"id":f"t{i:02}"} for i in range(20)]}; jobs=executor.schedule(m)
   self.assertEqual(len(jobs),180)
   self.assertEqual({a:sum(job[2]==a for job in jobs) for a in experiment.ARMS},{a:60 for a in experiment.ARMS})
+ def test_candidate_architecture_is_arm64_elf(self):
+  with tempfile.TemporaryDirectory() as d:
+   binary=Path(d)/"bashy"; header=bytearray(20); header[:6]=b"\x7fELF\x02\x01"; header[18:20]=(183).to_bytes(2,"little"); binary.write_bytes(header)
+   self.assertTrue(experiment.is_linux_arm64_elf(binary))
+   header[18:20]=(62).to_bytes(2,"little"); binary.write_bytes(header)
+   self.assertFalse(experiment.is_linux_arm64_elf(binary))
  def test_adapter_redacts_runtime_auth_values(self):
   auth=json.dumps({"tokens":{"access_token":"secret-access-token-value","refresh_token":"secret-refresh-token-value"}})
   secrets=adapter.secret_literals(auth); output=adapter.redact("x secret-access-token-value y",secrets)
@@ -28,27 +34,42 @@ class ExperimentTest(unittest.TestCase):
   with mock.patch.object(executor.subprocess,"Popen",return_value=process),mock.patch.object(executor,"stop_container") as stop:
    code,out,err,timed=executor.bounded_container(["podman"],"podman","trial",1)
   self.assertEqual((code,out,err,timed),(124,"tail","err",True)); stop.assert_called_once_with("podman","trial")
- def test_duplicate_and_unknown_cost_rejected(self):
+ def test_duplicate_rejected_and_unknown_usage_retained(self):
   raw=[self.row(r,a) for r in range(1,4) for a in experiment.ARMS]; raw.append(self.row(1,"bash"))
   with self.assertRaisesRegex(ValueError,"duplicate"): experiment.validate(self.manifest(),raw)
-  raw=raw[:-1]; raw[0]["token_source"]="unknown"
-  with self.assertRaisesRegex(ValueError,"unknown"): experiment.validate(self.manifest(),raw)
+  raw=raw[:-1]; raw[0]["tokens"]=None; raw[0]["token_source"]="unknown-no-final-usage"
+  experiment.validate(self.manifest(),raw)
  def test_baseline_is_plain_bash(self):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d); candidate=root/"bashy"; candidate.write_text(""); assets=root/"arms"; assets.mkdir()
    env={"BASHY_EXPERIMENT_ARM":"bash","BASHY_EXPERIMENT_CANDIDATE":str(candidate),"BASHY_EXPERIMENT_ASSETS":str(assets)}
    with mock.patch.dict(os.environ,env,clear=False),mock.patch.object(action_shell.subprocess,"run") as run:
     run.return_value.returncode=0; self.assertEqual(action_shell.main(["-c","echo hi"]),0)
-   self.assertEqual(run.call_args.args[0],[str(candidate),"-c","echo hi"])
+   self.assertEqual(run.call_args.args[0],[str(candidate),"--no-bashpp","-c","echo hi"])
    with mock.patch.dict(os.environ,env,clear=False),mock.patch.object(action_shell.subprocess,"run") as run:
     run.return_value.returncode=0; self.assertEqual(action_shell.main(["script.sh","a b"]),0)
-   self.assertEqual(run.call_args.args[0],[str(candidate),"script.sh","a b"])
+   self.assertEqual(run.call_args.args[0],[str(candidate),"--no-bashpp","script.sh","a b"])
    with mock.patch.dict(os.environ,env,clear=False),mock.patch.object(action_shell.subprocess,"run") as run:
     run.return_value.returncode=0; self.assertEqual(action_shell.main(["-lc","echo hi"]),0)
-   self.assertEqual(run.call_args.args[0],[str(candidate),"-c","echo hi"])
+   self.assertEqual(run.call_args.args[0],[str(candidate),"--no-bashpp","-c","echo hi"])
+ def test_secret_is_owned_by_the_mapped_runtime_user(self):
+  self.assertEqual(executor.runtime_identity_args("auth",501,20),[
+   "--userns=keep-id","--user","501:20",
+   "--secret","auth,target=s381-auth,uid=501,gid=20,mode=0400",
+  ])
+ def test_timeout_is_a_scored_failure_not_a_void(self):
+  row=executor.timeout_outcome({"points":2,"fail":False})
+  self.assertNotIn("void",row); self.assertEqual(row["points"],0); self.assertTrue(row["fail"])
+  self.assertIsNone(row["tokens"]); self.assertEqual(row["token_source"],"unknown-no-final-usage")
+ def test_arm_files_use_real_fence_method_and_honest_contract_scope(self):
+  arms=Path(__file__).parents[1]/"experiments/bashsharp-l2/arms"
+  fence=(arms/"fences.bsh").read_text(); guards=(arms/"guards-contracts.bsh").read_text()
+  self.assertIn('"name":"run"',fence); self.assertIn("experiment_context.run()",fence)
+  self.assertIn('source "$BASHY_EXPERIMENT_ACTION"',fence)
+  self.assertNotIn("fence_ready",fence); self.assertNotIn("@ensure",guards+fence)
  @unittest.skipUnless(shutil.which("bashy"),"bashy required for paired statistics")
  def test_report(self):
   with tempfile.TemporaryDirectory() as d:
-   root=Path(d); m=self.manifest(); mp=root/"m.json"; mp.write_text(json.dumps(m)); raw=root/"raw.jsonl"; raw.write_text("".join(json.dumps(self.row(r,a))+"\n" for r in range(1,4) for a in experiment.ARMS)); out=root/"e.json"
-   self.assertEqual(experiment.report(type("A",(),{"manifest":str(mp),"raw":str(raw),"output":str(out),"bashy":shutil.which("bashy")})()),0); self.assertEqual(json.loads(out.read_text())["tokens"]["total"],36)
+   root=Path(d); m=self.manifest(); mp=root/"m.json"; mp.write_text(json.dumps(m)); all_rows=[self.row(r,a) for r in range(1,4) for a in experiment.ARMS]; all_rows[0].update(tokens=None,token_source="unknown-no-final-usage",timed_out=True,points=0,fail=True); raw=root/"raw.jsonl"; raw.write_text("".join(json.dumps(row)+"\n" for row in all_rows)); out=root/"e.json"
+   self.assertEqual(experiment.report(type("A",(),{"manifest":str(mp),"raw":str(raw),"output":str(out),"bashy":shutil.which("bashy")})()),0); evidence=json.loads(out.read_text()); self.assertEqual(evidence["tokens"],{"known_total_lower_bound":32,"unknown_rows":1}); self.assertEqual(evidence["failure_taxonomy"]["timeout"],1)
 if __name__=="__main__": unittest.main()

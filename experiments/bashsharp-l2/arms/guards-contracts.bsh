@@ -2,7 +2,6 @@
 # The guarded call is an actual Bash# execution boundary, not prompt text.
 @guard(effects: "read,write,exec")
 @require('test -f "$BASHY_EXPERIMENT_ACTION"')
-@ensure('test -f "$BASHY_EXPERIMENT_ACTION"')
 agentic function experiment_action() {
     source "$BASHY_EXPERIMENT_ACTION"
 }

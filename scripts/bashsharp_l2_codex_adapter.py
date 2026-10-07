@@ -144,13 +144,12 @@ def main() -> int:
     except json.JSONDecodeError:
         return fail("Codex --json emitted invalid JSONL")
     completed = [event for event in events if event.get("type") == "turn.completed"]
-    if len(completed) != 1 or not isinstance(completed[0].get("usage"), dict):
-        return fail("Codex trace did not contain exactly one turn.completed usage event")
-    usage = completed[0]["usage"]
-    input_tokens = usage.get("input_tokens")
-    output_tokens = usage.get("output_tokens")
-    if not isinstance(input_tokens, int) or not isinstance(output_tokens, int):
-        return fail("Codex usage lacks integer input_tokens/output_tokens")
+    if len(completed) != 1:
+        return fail("Codex trace did not contain exactly one turn.completed event")
+    usage = completed[0].get("usage")
+    input_tokens = usage.get("input_tokens") if isinstance(usage, dict) else None
+    output_tokens = usage.get("output_tokens") if isinstance(usage, dict) else None
+    usage_known = isinstance(input_tokens, int) and isinstance(output_tokens, int)
     action_items = {}
     for event in events:
         if event.get("type") not in ("item.started", "item.completed") or not isinstance(event.get("item"), dict):
@@ -166,8 +165,8 @@ def main() -> int:
         "cli_version": cli_version,
         "model": model,
         "model_options_sha256": actual_options_sha,
-        "tokens": input_tokens + output_tokens,
-        "token_source": "codex-turn.completed",
+        "tokens": input_tokens + output_tokens if usage_known else None,
+        "token_source": "codex-turn.completed" if usage_known else "unknown-no-final-usage",
         "usage": usage,
         "command_executions": sum(kind == "command_execution" for kind in action_items.values()),
         "forbidden_action_types": forbidden,

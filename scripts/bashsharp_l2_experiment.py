@@ -12,6 +12,10 @@ ACTION_CONSTRAINT = "\n\nExperiment constraint: use shell commands for every wor
 
 def digest(p: Path) -> str: return hashlib.sha256(p.read_bytes()).hexdigest()
 def json_digest(v: object) -> str: return hashlib.sha256(json.dumps(v, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+def is_linux_arm64_elf(p: Path) -> bool:
+    header=p.read_bytes()[:20]
+    if len(header)<20 or header[:4]!=b"\x7fELF" or header[4]!=2 or header[5] not in (1,2): return False
+    return int.from_bytes(header[18:20],"little" if header[5]==1 else "big")==183
 def tree_digest(p: Path) -> str:
     return hashlib.sha256("".join(f"{x.relative_to(p)}:{digest(x)}\n" for x in sorted(p.rglob("*")) if x.is_file()).encode()).hexdigest()
 def validate_manifest(m: dict) -> None:
@@ -33,15 +37,16 @@ def prepare(a: argparse.Namespace) -> int:
     if a.k < 3 or a.budget_seconds <= 0: raise ValueError("K must be at least 3 and budget must be positive")
     opts = json.loads(a.model_options)
     if not isinstance(opts, dict): raise ValueError("--model-options must be a JSON object")
+    if a.model != "gpt-6-luna" or opts != {"model_reasoning_effort":"low"}: raise ValueError("the frozen provider configuration is gpt-6-luna with low reasoning effort")
     out = Path(a.output); out.mkdir(parents=True, exist_ok=False)
-    if candidate.read_bytes()[:4] != b"\x7fELF": raise ValueError("candidate must be a Linux ELF executable")
+    if not is_linux_arm64_elf(candidate): raise ValueError("candidate must be a Linux/arm64 ELF executable")
     task_rows=[]
     for task in TASKS:
         fixture=ROOT/"packs/l2"/task/"fixture"; task_file=fixture/"TASK.md"
         if not task_file.is_file(): raise ValueError(f"{task} fixture is missing TASK.md")
         prompt="Read TASK.md and do the task."
         task_rows.append({"id":task,"task_sha256":digest(ROOT/"packs/l2"/task/"task.yaml"),"fixture_tree_sha256":tree_digest(fixture),"prompt":prompt,"task_prompt_sha256":digest(task_file),"provider_prompt_sha256":hashlib.sha256((prompt+ACTION_CONSTRAINT).encode()).hexdigest()})
-    m = {"schema":"bashsharp-l2-v3", "story_id":"050a68a821a9", "pack":"l2", "provider":"codex", "provider_cli":"codex-cli 0.157.1", "tasks":task_rows, "k":a.k, "model":a.model, "agent":"codex-cli/0.157.1", "seed":a.seed, "model_options":opts, "model_options_sha256":json_digest(opts), "candidate_path":str(candidate), "candidate_sha256":digest(candidate), "budget_seconds":a.budget_seconds, "isolation":{"required":True,"method":"oci","mounts":"fixture+candidate+arm-assets+runtime-secret","evaluator_outside_principal":True,"shell_enforcement":"container /bin/sh and /bin/bash are arm wrapper"}, "arms":{"bash":{"dialect":"off","shell_args":[],"prelude":None},"guards-contracts":{"dialect":"on","shell_args":["--bashpp"],"prelude":"arms/guards-contracts.bsh"},"fences":{"dialect":"on","shell_args":["--bashpp"],"prelude":"arms/fences.bsh"}}, "pricing":{"usd":"unknown","reason":"dollars remain unknown without provider pricing evidence"}}
+    m = {"schema":"bashsharp-l2-v4", "story_id":"050a68a821a9", "pack":"l2", "provider":"codex", "provider_cli":"codex-cli 0.157.1", "tasks":task_rows, "k":a.k, "model":a.model, "agent":"codex-cli/0.157.1", "seed":a.seed, "model_options":opts, "model_options_sha256":json_digest(opts), "candidate_path":str(candidate), "candidate_sha256":digest(candidate), "budget_seconds":a.budget_seconds, "isolation":{"required":True,"method":"oci","platform":"linux/arm64","mounts":"fixture+candidate+arm-assets+runtime-secret","evaluator_outside_principal":True,"shell_enforcement":"container /bin/sh and /bin/bash are arm wrapper"}, "arms":{"bash":{"dialect":"explicitly-off","shell_args":["--no-bashpp"],"prelude":None},"guards-contracts":{"dialect":"on","shell_args":["--bashpp"],"prelude":"arms/guards-contracts.bsh"},"fences":{"dialect":"on","shell_args":["--bashpp"],"prelude":"arms/fences.bsh"}}, "pricing":{"usd":"unknown","reason":"dollars remain unknown without provider pricing evidence"}}
     m["manifest_sha256"] = json_digest(m)
     (out/"manifest.json").write_text(json.dumps(m, indent=2, sort_keys=True)+"\n"); print(out/"manifest.json"); return 0
 
@@ -70,7 +75,9 @@ def validate(m: dict, raw: list[dict]) -> None:
         if key in seen: raise ValueError(f"duplicate task/repetition/arm row: {key}")
         seen.add(key)
         if not isinstance(row["points"],(int,float)) or not isinstance(row["fail"],bool): raise ValueError(f"raw row {row['_line']} has invalid grade")
-        if not isinstance(row["tokens"],int) or row["tokens"]<0 or row["token_source"] in ("",None,"unknown"): raise ValueError(f"raw row {row['_line']} has unknown/invalid token cost")
+        known_tokens=isinstance(row["tokens"],int) and not isinstance(row["tokens"],bool) and row["tokens"]>=0 and row["token_source"]=="codex-turn.completed"
+        unknown_tokens=row["tokens"] is None and row["token_source"]=="unknown-no-final-usage"
+        if not (known_tokens or unknown_tokens): raise ValueError(f"raw row {row['_line']} has invalid token accounting")
         if row["model"]!=m["model"] or row["agent"]!=m["agent"]: raise ValueError(f"raw row {row['_line']} mixes model or agent")
         if row["provider"]!=m["provider"] or row["provider_cli"]!=m["provider_cli"]: raise ValueError(f"raw row {row['_line']} mixes provider or provider CLI")
         if not isinstance(row["provider_image_id"],str) or not row["provider_image_id"]: raise ValueError(f"raw row {row['_line']} has no provider image identity")
@@ -82,18 +89,19 @@ def validate(m: dict, raw: list[dict]) -> None:
 
 def report(a: argparse.Namespace) -> int:
     m=json.loads(Path(a.manifest).read_text()); validate_manifest(m); raw=rows(Path(a.raw)); validate(m,raw)
-    for r in raw: r.pop("_line",None); r["instance_id"]=f"{r['task']}#{r['repetition']}"; r["resolved"]=bool(r["points"]==2 and not r["fail"]); r["failure_class"]=classify(str(r["terminal_output"]))
+    for r in raw: r.pop("_line",None); r["instance_id"]=f"{r['task']}#{r['repetition']}"; r["resolved"]=bool(r["points"]==2 and not r["fail"]); r["failure_class"]="timeout" if r.get("timed_out") else classify(str(r["terminal_output"]))
     normalized=Path(a.output).with_suffix(".jsonl"); normalized.write_text("".join(json.dumps(r,sort_keys=True)+"\n" for r in raw))
     paired={}
     for left,right in (("bash","guards-contracts"),("bash","fences"),("guards-contracts","fences")):
-        done=subprocess.run([a.bashy,"stats","paired","--json","--arm","arm","--a",left,"--b",right,"--cost","tokens",str(normalized)],text=True,capture_output=True)
+        done=subprocess.run([a.bashy,"stats","paired","--json","--arm","arm","--a",left,"--b",right,str(normalized)],text=True,capture_output=True)
         if done.returncode: raise ValueError(f"paired stats failed: {done.stderr.strip()}")
         try: paired[f"{right}-minus-{left}"]=json.loads(done.stdout)
         except json.JSONDecodeError as e: raise ValueError("paired stats did not return JSON") from e
     cps={}
     for arm in ARMS:
-        own=[r for r in raw if r["arm"]==arm]; solved=sum(r["resolved"] for r in own); total=sum(r["tokens"] for r in own); cps[arm]={"solves":solved,"tokens":total,"tokens_per_solve":total/solved if solved else None}
-    evidence={"manifest":m,"raw_rows":raw,"paired":paired,"cost_per_solve":cps,"failure_taxonomy":dict(Counter(r["failure_class"] for r in raw)),"tokens":{"total":sum(r["tokens"] for r in raw),"unknown_rows":0},"pricing":m["pricing"]}
+        own=[r for r in raw if r["arm"]==arm]; solved=sum(r["resolved"] for r in own); known=sum(r["tokens"] for r in own if isinstance(r["tokens"],int)); unknown=sum(r["tokens"] is None for r in own); cps[arm]={"solves":solved,"known_tokens_lower_bound":known,"unknown_token_rows":unknown,"tokens_per_solve_lower_bound":known/solved if solved else None}
+    known_total=sum(r["tokens"] for r in raw if isinstance(r["tokens"],int)); unknown_total=sum(r["tokens"] is None for r in raw)
+    evidence={"manifest":m,"raw_rows":raw,"paired":paired,"cost_per_solve":cps,"failure_taxonomy":dict(Counter(r["failure_class"] for r in raw)),"tokens":{"known_total_lower_bound":known_total,"unknown_rows":unknown_total},"pricing":m["pricing"]}
     Path(a.output).write_text(json.dumps(evidence,indent=2,sort_keys=True)+"\n"); print(a.output); return 0
 
 def main() -> int:

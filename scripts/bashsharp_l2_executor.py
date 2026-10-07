@@ -15,7 +15,7 @@ import time
 import uuid
 from pathlib import Path
 
-from bashsharp_l2_experiment import ARMS, ROOT, digest, rows, tree_digest, validate_manifest
+from bashsharp_l2_experiment import ARMS, ROOT, digest, is_linux_arm64_elf, rows, tree_digest, validate_manifest
 from pack_runner import grade
 
 SECRET_PATTERNS = (
@@ -34,16 +34,37 @@ def redact(text: str) -> str:
     return text
 
 
-def image_identity(engine: str, image: str) -> str:
-    done = run([engine, "image", "inspect", "--format", "{{.Id}}", image])
-    if done.returncode or not done.stdout.strip():
+def image_identity(engine: str, image: str, platform: str) -> str:
+    done = run([engine, "image", "inspect", "--format", "{{.Id}} {{.Os}}/{{.Architecture}}", image])
+    fields = done.stdout.strip().split()
+    if done.returncode or len(fields) != 2:
         raise ValueError(f"cannot inspect provider image {image}: {done.stderr.strip()}")
-    return done.stdout.strip()
+    if fields[1] != platform:
+        raise ValueError(f"provider image platform is {fields[1]}, expected {platform}")
+    return fields[0]
 
 
 def stop_container(engine: str, name: str) -> None:
     run([engine, "stop", "--time", "1", name], timeout=10)
     run([engine, "rm", "--force", name], timeout=10)
+
+
+def runtime_identity_args(secret_name: str, uid: int, gid: int) -> list[str]:
+    return [
+        "--userns=keep-id", "--user", f"{uid}:{gid}",
+        "--secret", f"{secret_name},target=s381-auth,uid={uid},gid={gid},mode=0400",
+    ]
+
+
+def timeout_outcome(row: dict) -> dict:
+    row.update({
+        "timed_out": True,
+        "points": 0,
+        "fail": True,
+        "tokens": None,
+        "token_source": "unknown-no-final-usage",
+    })
+    return row
 
 
 def bounded_container(command: list[str], engine: str, name: str, timeout: int) -> tuple[int, str, str, bool]:
@@ -107,15 +128,18 @@ def invoke(args, manifest: dict, task: str, repetition: int, arm: str, image_id:
         }
         command = [
             args.engine, "run", "--name", name, "--rm", "--read-only",
+            "--platform", args.platform,
             "--cap-drop=ALL", "--security-opt=no-new-privileges",
             "--pids-limit", str(args.pids_limit), "--memory", args.memory,
-            "--cpus", str(args.cpus), "--userns=keep-id",
+            "--cpus", str(args.cpus),
             "--tmpfs", "/tmp:rw,nosuid,nodev,size=512m", "--network", args.network,
-            "--secret", f"{args.secret_name},target=s381-auth,mode=0400",
+        ]
+        command.extend(runtime_identity_args(args.secret_name, args.uid, args.gid))
+        command.extend([
             "-v", f"{work/'work'}:/work:rw",
             "-v", f"{Path(manifest['candidate_path'])}:/candidate/bashy:ro",
             "-v", f"{assets}:/opt/s381/arms:ro", "-w", "/work",
-        ]
+        ])
         for key, value in environment.items():
             command.extend(["-e", f"{key}={value}"])
         command.append(args.image)
@@ -136,8 +160,7 @@ def invoke(args, manifest: dict, task: str, repetition: int, arm: str, image_id:
             row.update({"void": True, "void_reason": "planted evaluator-only marker appeared in agent output"})
             return row
         if timed_out:
-            row.update({"void": True, "void_reason": "provider trial exceeded the enforced budget"})
-            return row
+            return timeout_outcome(row)
         receipt_line = next(
             (line.removeprefix("S381_RECEIPT:") for line in reversed(stdout.splitlines()) if line.startswith("S381_RECEIPT:")),
             None,
@@ -159,8 +182,10 @@ def invoke(args, manifest: dict, task: str, repetition: int, arm: str, image_id:
             receipt.get("forbidden_action_types") != [],
             not isinstance(receipt.get("command_executions"), int),
             receipt.get("command_executions", 0) < 1,
-            not isinstance(receipt.get("tokens"), int), receipt.get("tokens", -1) < 0,
-            receipt.get("token_source") != "codex-turn.completed",
+            not (
+                (isinstance(receipt.get("tokens"), int) and receipt.get("tokens") >= 0 and receipt.get("token_source") == "codex-turn.completed")
+                or (receipt.get("tokens") is None and receipt.get("token_source") == "unknown-no-final-usage")
+            ),
         )):
             row.update({"void": True, "void_reason": "provider receipt metadata or usage did not match the manifest"})
         else:
@@ -201,19 +226,21 @@ def main() -> int:
     parser.add_argument("--jobs", type=int, default=4); parser.add_argument("--cpus", type=float, default=1)
     parser.add_argument("--memory", default="1500m"); parser.add_argument("--pids-limit", type=int, default=256)
     parser.add_argument("--network", default="slirp4netns")
+    parser.add_argument("--platform", default="linux/arm64")
+    parser.add_argument("--uid", type=int, default=os.getuid()); parser.add_argument("--gid", type=int, default=os.getgid())
     parser.add_argument("--limit", type=int, help="run only the first N pending trials (smoke use only)")
     args = parser.parse_args()
     if args.jobs < 1 or args.jobs > 4: parser.error("--jobs must be between 1 and 4")
     if args.limit is not None and args.limit < 1: parser.error("--limit must be positive")
     manifest = json.loads(Path(args.manifest).read_text())
     validate_manifest(manifest)
-    if manifest.get("schema") != "bashsharp-l2-v3" or manifest.get("provider") != "codex":
-        parser.error("manifest is not the supported Codex v3 experiment")
-    if Path(manifest["candidate_path"]).read_bytes()[:4] != b"\x7fELF":
-        parser.error("manifest candidate is not a Linux ELF executable")
+    if manifest.get("schema") != "bashsharp-l2-v4" or manifest.get("provider") != "codex":
+        parser.error("manifest is not the supported Codex v4 experiment")
+    if not is_linux_arm64_elf(Path(manifest["candidate_path"])):
+        parser.error("manifest candidate is not a Linux/arm64 ELF executable")
     if digest(Path(manifest["candidate_path"])) != manifest["candidate_sha256"]:
         parser.error("candidate changed after prepare")
-    image_id = image_identity(args.engine, args.image)
+    image_id = image_identity(args.engine, args.image, args.platform)
     output = Path(args.raw); output.parent.mkdir(parents=True, exist_ok=True)
     log_dir = output.parent / "logs"; log_dir.mkdir(exist_ok=True)
     completed = set()
