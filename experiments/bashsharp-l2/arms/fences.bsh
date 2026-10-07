@@ -18,7 +18,11 @@ experiment_fence_runner() {
 The measured shell action is exported as experiment_context.run.
 ~~~
 
-@guard(effects: "read,write,exec")
+# @effects (not @guard): @guard only narrows the cap, it does not vouch for
+# commands the Command Atlas does not classify, so an atlas-unknown command
+# (rg, a literal nested `sh -c`, ...) was denied outright under @guard
+# regardless of the cap. See guards-contracts.bsh for the fuller note.
+@effects("read,write,exec")
 @require('test -f "$BASHY_EXPERIMENT_ACTION"')
 agentic function experiment_action() {
     fence_result := experiment_context.run()

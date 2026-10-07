@@ -101,6 +101,34 @@ class ExperimentTest(unittest.TestCase):
   self.assertIn('"name":"run"',fence); self.assertIn("experiment_context.run()",fence)
   self.assertIn('source "$BASHY_EXPERIMENT_ACTION"',fence)
   self.assertNotIn("fence_ready",fence); self.assertNotIn("@ensure",guards+fence)
+  self.assertIn('@effects("read,write,exec")',fence); self.assertIn('@effects("read,write,exec")',guards)
+  self.assertNotIn("@guard(effects:",guards+fence)
+ @unittest.skipUnless(shutil.which("bashy"),"bashy required to exercise the real Command Atlas/effect cap")
+ def test_nested_shell_and_atlas_unknown_commands_run_under_declared_effects(self):
+  # Sprint 381 S4: codex's own tool boundary runs every agent action through
+  # a nested shell (`/bin/sh -lc "<script>"`); under the fences/guards-contracts
+  # arms that landed on `experiment_action`, not the real nested-shell
+  # invocation that actually failed. This is that exact invocation, with no
+  # model call: the transcript script from docs/evidence/sprint-381-l2
+  # (cat + printf + rg, rg being Atlas-unknown) plus a literal nested `sh -c`.
+  arms=Path(__file__).parents[1]/"experiments/bashsharp-l2/arms"
+  cwd=os.getcwd()
+  with tempfile.TemporaryDirectory() as d:
+   workspace=Path(d); (workspace/"TASK.md").write_text("hello task\n")
+   env={"BASHY_EXPERIMENT_CANDIDATE":shutil.which("bashy"),"BASHY_EXPERIMENT_ASSETS":str(arms)}
+   os.chdir(workspace)
+   try:
+    for arm in ("guards-contracts","fences"):
+     with mock.patch.dict(os.environ,{**env,"BASHY_EXPERIMENT_ARM":arm},clear=False):
+      self.assertEqual(action_shell.main(["-lc",'cat TASK.md && printf "\\n--- files ---\\n" && rg --files | head -200']),0)
+      self.assertEqual(action_shell.main(["-lc",'sh -c "echo nested-ok"']),0)
+      # Fail-closed is still intact: an effect outside the declared
+      # read,write,exec envelope (net, via curl) stays denied — the fix
+      # vouches for unclassified commands within the envelope, it does not
+      # widen the envelope itself.
+      self.assertEqual(action_shell.main(["-lc","curl -s https://example.invalid"]),126)
+   finally:
+    os.chdir(cwd)
  @unittest.skipUnless(shutil.which("bashy"),"bashy required for paired statistics")
  def test_report(self):
   with tempfile.TemporaryDirectory() as d:
