@@ -1,0 +1,14 @@
+# A real Bash# fence is loaded on every action; the source call remains under
+# the same enforced guard/contracts boundary as the guards arm.
+~~~sh as experiment_context
+printf '%s\n' bashsharp-fence-active >/dev/null
+~~~
+
+@guard(effects: "read,write,process_exec")
+@require('test -f "$BASHY_EXPERIMENT_ACTION"')
+@ensure('test -f "$BASHY_EXPERIMENT_ACTION"')
+agentic function experiment_action() {
+    experiment_context.run
+    source "$BASHY_EXPERIMENT_ACTION"
+}
+agentic { experiment_action; }
