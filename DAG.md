@@ -103,6 +103,8 @@ for i in $(seq 1 "$K"); do
   rm -rf "$ws"; mkdir -p "$ws"
   cp -R "$pack/fixture/." "$ws/"
   (cd "$ws" && git init -q -b main && git add -A && git -c user.name=bench -c user.email=bench@example.invalid commit -qm fixture)
+  # inbox-find seeds trusted sibling store before agent runs
+  if [ -f "$ws/setup.sh" ]; then WORKSPACE="$ws" bash "$ws/setup.sh" >/dev/null 2>&1 || true; fi
 
   # Only the zero-quota dry-run agent may see the reference solution.
   ref=; [ "$AGENT" = benchbot-dry ] && ref=$pack/reference

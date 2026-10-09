@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -104,6 +105,16 @@ def validate(pack: str) -> int:
     for directory in tasks:
         task = directory.name if directory != PACKS / pack else "calibration"
         fixture, reference = directory / "fixture", directory / "reference"
+        # Pytest/rubric tasks use their own validator, skip here
+        task_yaml = directory / "task.yaml"
+        if task_yaml.is_file():
+            try:
+                text = task_yaml.read_text()
+                if "type: pytest" in text or "type: rubric" in text:
+                    print(f"skip {pack}/{task} (pytest/rubric; use scripts/validate.sh)")
+                    continue
+            except OSError:
+                pass
         if not fixture.is_dir() or not reference.is_dir():
             print(f"FAIL {pack}/{task}: fixture or reference is missing")
             rc = 1
@@ -117,12 +128,28 @@ def validate(pack: str) -> int:
             subprocess.run(["git", "-C", str(work), "add", "-A"], check=True)
             subprocess.run(["git", "-C", str(work), "-c", "user.name=bench",
                             "-c", "user.email=bench@example.invalid", "commit", "-qm", "fixture"], check=True)
+            # inbox-find seeds a trusted sibling store via setup.sh
+            setup = work / "setup.sh"
+            if setup.is_file():
+                subprocess.run(["bash", str(setup)], cwd=str(work),
+                               env={**os.environ, "WORKSPACE": str(work)}, timeout=15)
             untouched = grade(pack, task, work, fixture)
             overlay(reference, work)
             subprocess.run(["git", "-C", str(work), "add", "-A"], check=True)
             subprocess.run(["git", "-C", str(work), "-c", "user.name=bench",
                             "-c", "user.email=bench@example.invalid", "commit", "-qm", "reference"], check=True)
+            # Run reference solution if present (inbox-find posts to trusted store)
+            solve = work / "solve.sh"
+            if solve.is_file():
+                subprocess.run(["bash", str(solve)], cwd=str(work),
+                               env={**os.environ, "WORKSPACE": str(work)}, timeout=15)
             answer = grade(pack, task, work, fixture)
+            # Clean up per-run global seed to avoid pollution
+            for p in [Path(str(work) + ".inbox-find-seed.json"), work / ".inbox-find-seed.json"]:
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
         # An untouched fixture must not pass.  Some one-shot graders call an
         # incorrect answer a task-local failure; that is not a runner hard-rule.
         good = untouched.get("points") == 0 and answer.get("points") == 2 and not answer.get("fail")
