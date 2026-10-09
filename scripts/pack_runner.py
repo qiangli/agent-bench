@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -86,6 +87,25 @@ def grade(pack: str, task: str, workspace: Path, fixture: Path) -> dict:
     return result
 
 
+def isolate(pack: str, task: str, workspace: Path, agent: str) -> list[str]:
+    """Run a task's optional setup.py against the sibling store WORKSPACE.bashy-home.
+
+    The store lives outside the workspace, so the agent's files cannot score and
+    nothing touches the operator's real state. setup.py prints KEY=VALUE lines:
+    the environment the agent must be launched with.
+    """
+    setup = task_dir(pack, task) / "setup.py"
+    if not setup.is_file():
+        return []
+    home = Path(str(workspace).rstrip("/") + ".bashy-home")
+    shutil.rmtree(home, ignore_errors=True)
+    home.mkdir(parents=True)
+    done = subprocess.run([sys.executable, str(setup), str(home), agent], text=True, capture_output=True, check=False)
+    if done.returncode:
+        raise ValueError(f"{pack}/{task} setup failed: {(done.stderr or done.stdout).strip()[:300]}")
+    return [line for line in done.stdout.splitlines() if "=" in line]
+
+
 def overlay(source: Path, destination: Path) -> None:
     for child in source.iterdir():
         target = destination / child.name
@@ -117,12 +137,19 @@ def validate(pack: str) -> int:
             subprocess.run(["git", "-C", str(work), "add", "-A"], check=True)
             subprocess.run(["git", "-C", str(work), "-c", "user.name=bench",
                             "-c", "user.email=bench@example.invalid", "commit", "-qm", "fixture"], check=True)
+            # A task with setup.py is graded from an isolated store; its reference
+            # is an action (solve.py) against that store, not files for the workspace.
+            seeded = bool(isolate(pack, task, work, os.environ.get("BENCH_VALIDATE_AGENT", "claude-haiku4.5")))
             untouched = grade(pack, task, work, fixture)
-            overlay(reference, work)
+            if seeded:
+                subprocess.run([sys.executable, str(reference / "solve.py"), str(work) + ".bashy-home"], check=True)
+            else:
+                overlay(reference, work)
             subprocess.run(["git", "-C", str(work), "add", "-A"], check=True)
             subprocess.run(["git", "-C", str(work), "-c", "user.name=bench",
-                            "-c", "user.email=bench@example.invalid", "commit", "-qm", "reference"], check=True)
+                            "-c", "user.email=bench@example.invalid", "commit", "-q", "--allow-empty", "-m", "reference"], check=True)
             answer = grade(pack, task, work, fixture)
+        shutil.rmtree(str(work) + ".bashy-home", ignore_errors=True)
         # An untouched fixture must not pass.  Some one-shot graders call an
         # incorrect answer a task-local failure; that is not a runner hard-rule.
         good = untouched.get("points") == 0 and answer.get("points") == 2 and not answer.get("fail")
@@ -244,6 +271,7 @@ def main() -> int:
     for name in ("tasks", "validate"):
         p = sub.add_parser(name); p.add_argument("--pack", required=True)
     p = sub.add_parser("path"); p.add_argument("--pack", required=True); p.add_argument("--task", required=True)
+    p = sub.add_parser("isolate"); p.add_argument("--pack", required=True); p.add_argument("--task", required=True); p.add_argument("--workspace", required=True); p.add_argument("--agent", required=True)
     p = sub.add_parser("grade"); p.add_argument("--pack", required=True); p.add_argument("--task", required=True); p.add_argument("--workspace", required=True); p.add_argument("--fixture", required=True)
     p = sub.add_parser("record"); p.add_argument("--results", required=True); p.add_argument("--agent", required=True); p.add_argument("--task", required=True); p.add_argument("--run", type=int, required=True); p.add_argument("--secs", type=int, required=True); p.add_argument("--ended", required=True); p.add_argument("--steered", action="store_true"); p.add_argument("--graded", required=True)
     for name in ("verdict", "calibrate"):
@@ -254,6 +282,7 @@ def main() -> int:
         if args.command == "tasks": print("\n".join(task_names(args.pack)))
         elif args.command == "path": print(task_dir(args.pack, args.task))
         elif args.command == "validate": return validate(args.pack)
+        elif args.command == "isolate": print("\n".join(isolate(args.pack, args.task, Path(args.workspace), args.agent)))
         elif args.command == "grade": print(json.dumps(grade(args.pack, args.task, Path(args.workspace), Path(args.fixture))))
         elif args.command == "record": return record(Path(args.results), args.agent, args.task, args.run, args.secs, args.ended, args.steered, args.graded)
         elif args.command == "verdict": return verdict(Path(args.results), args.pack, args.agent, args.k)

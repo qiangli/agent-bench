@@ -104,9 +104,15 @@ for i in $(seq 1 "$K"); do
   cp -R "$pack/fixture/." "$ws/"
   (cd "$ws" && git init -q -b main && git add -A && git -c user.name=bench -c user.email=bench@example.invalid commit -qm fixture)
 
+  # A task with setup.py is seeded into an isolated store beside the workspace;
+  # the agent is launched with that store's environment (see packs/floor/inbox-find).
+  iso=$(python3 scripts/pack_runner.py isolate --pack "$PACK" --task "$TASK" --workspace "$ws" --agent "$AGENT") \
+    || { echo "SETUP FAILED $AGENT $TASK#$i" >&2; exit 1; }
+  isoenv=(); while IFS= read -r l; do [ -n "$l" ] && isoenv+=("$l"); done <<< "$iso"
+
   # Only the zero-quota dry-run agent may see the reference solution.
   ref=; [ "$AGENT" = benchbot-dry ] && ref=$pack/reference
-  BENCH_REF=$ref BASHY_CHAT_INBOX=off BASHY_ALLOW_UNSAFE_AGENT_LAUNCH=1 \
+  env "${isoenv[@]}" BENCH_REF=$ref BASHY_CHAT_INBOX=off BASHY_ALLOW_UNSAFE_AGENT_LAUNCH=1 \
     bashy chat --agent "$AGENT" -i --yolo -m "Read TASK.md and do the task." \
       --cwd "$ws" --task "bench-$TASK-$i" --timeout "$((BUDGET + 60))s" \
       > "$ws.session.log" 2>&1 &

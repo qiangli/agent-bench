@@ -14,7 +14,7 @@ import pack_runner
 class TaskDiscoveryTest(unittest.TestCase):
     def test_existing_pack_layouts(self):
         expected_counts = {
-            "floor": 3,
+            "floor": 4,
             "l1": 20,
             "l2": 20,
             "steer": 10,
