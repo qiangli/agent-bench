@@ -7,7 +7,7 @@ a fresh isolated store and runs the shipped grader:
   0  no reply
   0  adversarial: the agent only writes a fake reply file and log into its workspace
   0  reply carrying the wrong word
-  1  reply sent after an ack-all read (bare `bashy inbox` consumes everything)
+  1  reply sent after explicitly acknowledging every message (reads never consume)
   2  reference solution (non-consuming read, then reply)
 Also checks that the real operator board is byte-identical afterwards.
 """
@@ -62,7 +62,9 @@ def fake_in_workspace(ws, home, word):
 
 
 def ack_all_then_reply(ws, home, word):
-    lib.bashy(home, "inbox", "--as", AGENT, "--json", seat=AGENT)
+    # Reading never consumes; only an explicit ack does.
+    for row in lib.pending(home, AGENT):
+        lib.bashy(home, "inbox", "ack", "--as", AGENT, f"{row['source']}:{row['seq']}", seat=AGENT)
     reply(home, word)
 
 
