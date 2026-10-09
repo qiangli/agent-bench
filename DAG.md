@@ -55,7 +55,9 @@ published pass rule — and do not present a certificate as calibrated.
 session through `bashy chat -i` (headless and steerable), the same one-line
 prompt, the same steer text on the same trigger, the same budget. Steers go
 through `bashy chat steer` — the control channel a human uses. Host mail is kept
-out (`BASHY_CHAT_INBOX=off`). A run ends when its session exits, when the
+out (`BASHY_CHAT_INBOX=off`), and so are the operator's personal claude.ai
+connectors (`ENABLE_CLAUDEAI_MCP_SERVERS=false`): an agent told to check its
+inbox once searched the operator's real mail. A run ends when its session exits, when the
 workspace has been quiet for QUIET seconds after the steer, or at BUDGET; it is
 then graded as it stands.
 
@@ -112,7 +114,7 @@ for i in $(seq 1 "$K"); do
 
   # Only the zero-quota dry-run agent may see the reference solution.
   ref=; [ "$AGENT" = benchbot-dry ] && ref=$pack/reference
-  env "${isoenv[@]}" BENCH_REF=$ref BASHY_CHAT_INBOX=off BASHY_ALLOW_UNSAFE_AGENT_LAUNCH=1 \
+  env "${isoenv[@]}" BENCH_REF=$ref BASHY_CHAT_INBOX=off ENABLE_CLAUDEAI_MCP_SERVERS=false BASHY_ALLOW_UNSAFE_AGENT_LAUNCH=1 \
     bashy chat --agent "$AGENT" -i --yolo -m "Read TASK.md and do the task." \
       --cwd "$ws" --task "bench-$TASK-$i" --timeout "$((BUDGET + 60))s" \
       > "$ws.session.log" 2>&1 &

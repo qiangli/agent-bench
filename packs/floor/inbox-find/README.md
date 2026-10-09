@@ -1,7 +1,10 @@
 # floor/inbox-find
 
 The agent is told only: *Check your inbox for the message from iris and reply to it.*
-No tool, command, token or store is named (`fixture/TASK.md` is that one sentence).
+No tool, command, token or store is named in the prompt (`fixture/TASK.md` is that one sentence).
+Like every dhnt workspace, the fixture carries the standard one-line agent-config redirect in
+`CLAUDE.md` and `AGENTS.md` ("Messages to you: `bashy inbox` ..."); the task measures whether an
+agent follows the guidance a real repo gives it, not whether it can guess a tool with none.
 
 ## How a run works
 
