@@ -381,7 +381,7 @@ set -u
 : "${AGENT:?}" "${RUNS:?}"
 [ -f "$RUNS/smoke.ok" ] || { echo "no passing smoke in $RUNS — run: bashy dag smoke RUNS=$RUNS"; exit 1; }
 for t in $(python3 scripts/pack_runner.py tasks --pack "${PACK:-steer}"); do
-  bashy dag run AGENT="$AGENT" PACK="${PACK:-steer}" TASK="$t" RUNS="$RUNS" K="${K:-3}" BUDGET="${BUDGET:-1200}" QUIET="${QUIET:-150}"
+  bashy dag run AGENT="$AGENT" PACK="${PACK:-steer}" TASK="$t" RUNS="$RUNS" K="${K:-3}" BUDGET="${BUDGET:-1200}" QUIET="${QUIET:-150}" THINK="${THINK:-600}"
   grep -q "\"agent\": \"$AGENT\".*\"void\": true" "$RUNS/results.jsonl" 2>/dev/null && { echo "VOID: $AGENT stopped (provider refused); rerun later"; break; }
 done
 bashy dag verdict AGENT="$AGENT" PACK="${PACK:-steer}" RUNS="$RUNS"
