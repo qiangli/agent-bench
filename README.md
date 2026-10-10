@@ -70,6 +70,15 @@ The runner is `DAG.md`, run with `bashy dag` (see its header for the verdict
 rules); it drives agents through `bashy chat`. The format is plain files, so any
 harness can drive it.
 
+Each run gets a fresh workspace of its own, outside the output directory and
+outside this repository: the agent never sits beside earlier runs' logs and
+results, nor under the tree that holds the graders and references. The session
+and screen logs go to the run's record directory, and the workspace is copied
+there only after grading. Because none of the answer key is reachable from that
+workspace, a screen reference to this repo, a pack, a grader, a reference, a run
+log or `results.jsonl` is a hard-rule **FAIL** ("read the answer key") whatever
+the grade.
+
 A run ends when its session exits, when both the workspace content (hashed in
 full, untracked files included) and the agent's screen have been quiet for
 `QUIET` seconds after the steer, when the workspace alone has been quiet for
@@ -94,6 +103,7 @@ bashy dag validate                      # steer pack tasks (fixtures score 0, re
 # Repository and harness sanity checks:
 scripts/check-private.sh                # verify no private system info in tracked files
 bashy dag dry RUNS=/path                # zero-quota dry run of the whole harness (benchbot)
+bashy dag selfcheck RUNS=/path          # harness hard rule: a planted answer-key read must FAIL
 ```
 
 Each pack's `selfcheck.py` exercises the pack locally without network access:
@@ -102,6 +112,13 @@ Each pack's `selfcheck.py` exercises the pack locally without network access:
 - `packs/review/selfcheck.py`: validates that `CHANGE.diff` reverse-applies cleanly, references pass, untouched fixtures fail, line tolerance (±3) holds, and whole-pack recall ≥ 80% with zero false alarms is enforced.
 - `packs/skill-uptake/selfcheck.py`: validates all 5 tasks in isolated git workspaces, confirming references score 2, untouched fixtures score 0, naive answers score 1 (5.0 pack score fails 6.0 line), and discovery and format use are recorded.
 - For `packs/l1` and `packs/l2`, individual task graders can be executed directly against workspace and fixture directories (`python3 packs/<pack>/<task>/grader/grade.py <workspace> <fixture>`).
+
+`bashy dag selfcheck` checks the *harness* rather than a pack: it plants a
+grader path on the dry agent's screen, split by colour escapes the way a TUI
+draws it, and requires the run to be recorded `fail=true` with "read the answer
+key" even though the solution itself graded 2. It goes red if the answer-key
+rule or the escape stripping is removed, and `bashy dag dry` runs it as part of
+the dry gate.
 
 ## Contamination
 
