@@ -107,6 +107,16 @@ for i in $(seq 1 "$K"); do
   cp -R "$pack/fixture/." "$ws/"
   (cd "$ws" && git init -q -b main && git add -A && git -c user.name=bench -c user.email=bench@example.invalid commit -qm fixture)
 
+  # skill-uptake: the bashy skill is exported into the workspace the way a
+  # user installs it for this agent's tool (its project skill roots and
+  # instruction file); SKILL=off runs the no-skill baseline.
+  if [ "$PACK" = skill-uptake ] && [ "${SKILL:-on}" != off ]; then
+    tool=$(bashy agent show "$AGENT" --field tool) \
+      && (cd "$ws" && bashy skill export bashy --repo --tool "$tool" >/dev/null \
+        && git add -A && git -c user.name=bench -c user.email=bench@example.invalid commit -qm skill) \
+      || { echo "SKILL EXPORT FAILED $AGENT $TASK#$i" >&2; exit 1; }
+  fi
+
   # A task with setup.py is seeded into an isolated store beside the workspace;
   # the agent is launched with that store's environment (see packs/floor/inbox-find).
   iso=$(python3 scripts/pack_runner.py isolate --pack "$PACK" --task "$TASK" --workspace "$ws" --agent "$AGENT") \
