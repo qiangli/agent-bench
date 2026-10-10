@@ -1,0 +1,17 @@
+# Repository Map
+Top-level symbols in this codebase:
+
+## config.go
+  type Config struct
+  func LoadConfig() (*Config, error)
+
+## router.go
+  type Router struct
+  func NewRouter() *Router
+  func (*Router) RegisterRoute(path string, handler string)
+
+## server.go
+  type Server struct
+  func NewServer(cfg *Config, router *Router) *Server
+  func (*Server) Start() error
+  func (*Server) Stop() error

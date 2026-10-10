@@ -41,6 +41,7 @@ short runner reference. A missing required run always makes the verdict fail.
 | `manager` | Steer/points rule: PASS and at least 6.0/10. |
 | `judge` | Agree with at least 18 of 20 planted outcomes. |
 | `l5` | Steer/points rule: PASS and at least 6.0/10. |
+| `skill-uptake` | Steer/points rule: PASS and at least 6.0/10 (discovery and format use scored per task). |
 
 **The golden set** (`golden.txt`) has `agent band` rows, optionally followed by
 a pack name to scope a row. Calibration maps a band to expected passing packs:

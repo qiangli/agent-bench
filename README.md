@@ -32,6 +32,7 @@ packs/<pack>/<task>/
 | `manager` | Manager certificate: conductor tasks (decompose, estimate, route, false-done detection, integration, dominance, blame, scorecard, replan, checkpoint) | 10 conductor tasks | PASS + score ≥ 6.0/10 (worst of K runs, no hard-rule breaks) | Self-checked (reference 10.0; naive L3-style 0.5); calibration run pending |
 | `judge` | Judge calibration certificate: synthetic blind cases (10 ADRs, 10 code changes) targeting subtle operational and concurrency behavior | 20 cases (10 ADR, 10 code) | Agreement ≥ 18/20 (90%) | Self-checked (reference passes; keyword, fixed-tag and trivial strategies fail); calibration run pending |
 | `l5` | Frontier certificate pack: frontier-only tasks covering remaining harness gaps | In progress | PASS + score ≥ 6.0 (planned) | In progress (being added) |
+| `skill-uptake` | Skill uptake certificate: measures whether agents consult exported skills/help or improvise on agentic shell verbs | 5 tasks | PASS + score ≥ 6.0/10 (worst of K runs, no hard-rule breaks) | Self-checked; calibration run pending |
 
 A task in a certificate pack is only kept if it **discriminates**: known agents
 at or above the level pass it and agents below do not. Tasks every agent passes
@@ -75,23 +76,25 @@ Packs provide self-check scripts and validators to verify that references pass, 
 
 ```bash
 # Dedicated pack self-checks:
-python3 packs/judge/selfcheck.py     # judge pack: references pass, heuristics/random fail (18/20 line)
-python3 packs/manager/selfcheck.py   # manager pack: references pass, hard rules, near-misses, 6.0 line
-python3 packs/review/selfcheck.py    # review pack: references pass, recall >= 80%, zero false alarms
+python3 packs/judge/selfcheck.py        # judge pack: references pass, heuristics/random fail (18/20 line)
+python3 packs/manager/selfcheck.py      # manager pack: references pass, hard rules, near-misses, 6.0 line
+python3 packs/review/selfcheck.py       # review pack: references pass, recall >= 80%, zero false alarms
+python3 packs/skill-uptake/selfcheck.py # skill-uptake pack: references pass, naive fails (5.0 line), discovery recorded
 
 # Task fixture and reference validation:
-scripts/validate.sh                  # pytest-based tasks (packs/floor)
-bashy dag validate                   # steer pack tasks (fixtures score 0, references score 2)
+scripts/validate.sh                     # pytest-based tasks (packs/floor)
+bashy dag validate                      # steer pack tasks (fixtures score 0, references score 2)
 
 # Repository and harness sanity checks:
-scripts/check-private.sh             # verify no private system info in tracked files
-bashy dag dry RUNS=/path             # zero-quota dry run of the whole harness (benchbot)
+scripts/check-private.sh                # verify no private system info in tracked files
+bashy dag dry RUNS=/path                # zero-quota dry run of the whole harness (benchbot)
 ```
 
 Each pack's `selfcheck.py` exercises the pack locally without network access:
 - `packs/judge/selfcheck.py`: validates that planted reference verdicts pass, while uniform accept/reject, random guessing, keyword-first impressions, and fixed-tag heuristics fail.
 - `packs/manager/selfcheck.py`: validates all 10 tasks in isolated git workspaces, confirming references score 2, untouched fixtures score 0, hard rules trigger on invalid actions, and whole-pack scoring enforces the 6.0 pass line.
 - `packs/review/selfcheck.py`: validates that `CHANGE.diff` reverse-applies cleanly, references pass, untouched fixtures fail, line tolerance (±3) holds, and whole-pack recall ≥ 80% with zero false alarms is enforced.
+- `packs/skill-uptake/selfcheck.py`: validates all 5 tasks in isolated git workspaces, confirming references score 2, untouched fixtures score 0, naive answers score 1 (5.0 pack score fails 6.0 line), and discovery and format use are recorded.
 - For `packs/l1` and `packs/l2`, individual task graders can be executed directly against workspace and fixture directories (`python3 packs/<pack>/<task>/grader/grade.py <workspace> <fixture>`).
 
 ## Contamination

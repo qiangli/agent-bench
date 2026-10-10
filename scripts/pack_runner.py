@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKS = ROOT / "packs"
-KNOWN_PACKS = {"floor", "l1", "l2", "steer", "review", "manager", "judge", "l5"}
+KNOWN_PACKS = {"floor", "l1", "l2", "steer", "review", "manager", "judge", "l5", "skill-uptake"}
 
 
 def task_dirs(pack: str) -> list[Path]:
