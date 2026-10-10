@@ -58,9 +58,11 @@ prompt, the same steer text on the same trigger, the same budget. Steers go
 through `bashy chat steer` — the control channel a human uses. Host mail is kept
 out (`BASHY_CHAT_INBOX=off`), and so are the operator's personal claude.ai
 connectors (`ENABLE_CLAUDEAI_MCP_SERVERS=false`): an agent told to check its
-inbox once searched the operator's real mail. A run ends when its session exits, when the
-workspace has been quiet for QUIET seconds after the steer, or at BUDGET; it is
-then graded as it stands.
+inbox once searched the operator's real mail. A run ends when its session
+exits, when both the workspace content (every file, untracked included) and the
+agent's screen have been quiet for QUIET seconds after the steer, when the
+workspace alone has been quiet for THINK seconds (a TUI that animates while it
+thinks), or at BUDGET; it is then graded as it stands.
 
 Unattended agents run with their approval gate off (`--yolo`), so the runner sets
 `BASHY_ALLOW_UNSAFE_AGENT_LAUNCH=1`: bashy's explicit, logged risk acceptance.
@@ -91,13 +93,31 @@ Appends one JSON line per run to `$RUNS/results.jsonl`.
 ```bsh
 set -u
 : "${AGENT:?AGENT=<bashy agent name>}" "${TASK:?TASK=<packs/steer task dir>}" "${RUNS:?RUNS=<output dir>}"
-K=${K:-3} BUDGET=${BUDGET:-1200} QUIET=${QUIET:-150}
+K=${K:-3} BUDGET=${BUDGET:-1200} QUIET=${QUIET:-150} THINK=${THINK:-600}
 MIN_POST_STEER=${MIN_POST_STEER:-60}
 PACK=${PACK:-steer}
 pack=$(python3 scripts/pack_runner.py path --pack "$PACK" --task "$TASK")
 mkdir -p "$RUNS"
 
-sig() { git -C "$1" rev-parse HEAD 2>/dev/null; git -C "$1" status --porcelain 2>/dev/null; }
+# Activity is ANY content change. A status line (" M inv.py") stays the same
+# while the file under it keeps changing, so it read as silence and cut an agent
+# that was still working; hash the whole tree instead, untracked files included,
+# through a throwaway index.
+sig() {
+  local i; i=$(mktemp -u)
+  git -C "$1" rev-parse HEAD 2>/dev/null
+  GIT_INDEX_FILE="$i" git -C "$1" add -A 2>/dev/null
+  GIT_INDEX_FILE="$i" git -C "$1" write-tree 2>/dev/null
+  rm -f "$i"
+}
+# bashy's `$!` is a job handle, not an OS pid, so a session is found by the id
+# `bashy chat` prints as it launches, never by matching the process table.
+sid() { sed -n 's/.*(id \([^)]*\)).*/\1/p' "$1" 2>/dev/null | head -1; }
+# Where bashy keeps a session's screen capture.
+scrlog() { echo "$HOME/.bashy/sessions/logs/$(printf '%s' "$1" | shasum -a 256 | cut -c1-12).log"; }
+# Wait for a session id to leave the host room: an agent is one identity, so a
+# lingering session refuses the next launch.
+gone() { for _ in $(seq 1 20); do bashy chat sessions 2>/dev/null | awk -v s="$1" 'NR > 1 && $1 == s {f = 1} END {exit !f}' || return 0; sleep 1; done; }
 VOID_RE='rate_limit_error|[Qq]uota exhausted|[Uu]sage limit|billing_error|overloaded_error|hit your limit|insufficient_quota|invalid_request_error|model is not supported'
 
 for i in $(seq 1 "$K"); do
@@ -134,66 +154,74 @@ for i in $(seq 1 "$K"); do
   trigger=$(cat "$pack/trigger" 2>/dev/null || echo none)
   steered=0; [ "$trigger" = none ] && steered=1; id=; enters=0
   start=$(date +%s); last=$start; prev=$(sig "$ws"); why=idle
+  lastscr=$start; scrsize=0; absorb=0
   while :; do
     sleep 5
     now=$(date +%s); el=$((now - start))
     cur=$(sig "$ws"); [ "$cur" != "$prev" ] && { prev=$cur; last=$now; }
+    [ -z "$id" ] && id=$(sid "$ws.session.log")
+    # An agent that is thinking writes nothing for minutes but keeps drawing:
+    # its screen counts as activity too, or it is cut mid-thought.
+    if [ -n "$id" ]; then
+      n=$(wc -c < "$(scrlog "$id")" 2>/dev/null || echo 0)
+      # The echo of the runner's OWN Enter nudge is not the agent working.
+      if [ "${n:-0}" -gt "$scrsize" ]; then [ "$absorb" = 1 ] || lastscr=$now; scrsize=$n; fi
+      absorb=0
+    fi
     if [ $steered = 0 ]; then
       fire=0
       case $trigger in
         commit) [ "$(git -C "$ws" rev-list --count HEAD)" -ge 2 ] && fire=1 ;;
         *s)     [ $el -ge "${trigger%s}" ] && fire=1 ;;
       esac
-      if [ $fire = 1 ]; then
-        [ -z "$id" ] && id=$(bashy chat sessions 2>/dev/null | awk -v p=$pid '$5 == p {print $1; exit}')
-        if [ -n "$id" ] && bashy chat steer "$id" "$(cat "$pack/steer.txt")" >/dev/null 2>&1; then
-          steered=1; last=$now; enters=0; echo "  steered $AGENT $TASK#$i at ${el}s"
-        fi
+      if [ $fire = 1 ] && [ -n "$id" ] && bashy chat steer "$id" "$(cat "$pack/steer.txt")" >/dev/null 2>&1; then
+        steered=1; last=$now; lastscr=$now; enters=0; echo "  steered $AGENT $TASK#$i at ${el}s"
       fi
     fi
-    [ -z "$id" ] && id=$(bashy chat sessions 2>/dev/null | awk -v p=$pid '$5 == p {print $1; exit}')
     if [ -n "$id" ] && [ $enters -lt 6 ] && [ $((now - last)) -ge $((30 * (enters + 1))) ]; then
       # Some TUIs (Muse) drop an Enter that arrives while they are busy or still
       # starting, leaving the prompt or the steer unsent in the input box; a
       # person would press Enter again. A bare Enter on an empty input is a
       # no-op for every agent, so it is safe to send after each quiet spell.
-      bashy chat steer "$id" --enter >/dev/null 2>&1; enters=$((enters + 1))
+      bashy chat steer "$id" --enter >/dev/null 2>&1; enters=$((enters + 1)); absorb=1
     fi
     kill -0 $pid 2>/dev/null || { why=exited; break; }
     [ $el -ge "$BUDGET" ] && { why=budget; break; }
-    [ $steered = 1 ] && [ $el -ge "$MIN_POST_STEER" ] && [ $((now - last)) -ge "$QUIET" ] && break
+    # Finished when the workspace AND the screen have been quiet for QUIET; a
+    # TUI that animates while it thinks is bounded by THINK of workspace quiet,
+    # and everything by BUDGET.
+    if [ $steered = 1 ] && [ $el -ge "$MIN_POST_STEER" ] && [ $((now - last)) -ge "$QUIET" ]; then
+      [ $((now - lastscr)) -ge "$QUIET" ] && break
+      [ $((now - last)) -ge "$THINK" ] && { why=think-cap; break; }
+    fi
   done
   if [ $why = exited ] && [ $el -lt 30 ]; then
     # A session that dies at startup (e.g. a first-run trust dialog swallowed
     # the prompt) never reached the model: retry once, never score it.
     echo "  LAUNCH FAILED $AGENT $TASK#$i (attempt $attempt) — not scored; see $ws.session.log" >&2
     tail -5 "$ws.session.log" >&2
-    for _ in $(seq 1 20); do bashy chat sessions 2>/dev/null | awk -v p=$pid '$5 == p {f=1} END {exit !f}' || break; sleep 1; done
+    gone "$id"
     [ $attempt = 2 ] && exit 1
     continue
   fi
-  # End the session and make sure it is GONE before the next run: an agent is
-  # one identity, so a lingering session refuses the next launch. Some TUIs ask
+  # End the session and make sure it is GONE before the next run. Some TUIs ask
   # for a second Ctrl-C, hence INT twice, then TERM, then KILL.
-  for sig in INT INT TERM KILL; do
-    kill -$sig $pid 2>/dev/null || break
+  for s in INT INT TERM KILL; do
+    kill -$s $pid 2>/dev/null || break
     for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 $pid 2>/dev/null || break 2; sleep 1; done
   done
-  for _ in $(seq 1 20); do
-    bashy chat sessions 2>/dev/null | awk -v p=$pid '$5 == p {f=1} END {exit !f}' || break
-    sleep 1
-  done
+  gone "$id"
 
   # Keep the agent's screen, and VOID the run if the provider refused to work
   # (rate limit, quota, billing, overload): that measures the account, not the
   # agent. A void run is never scored, and it ends this agent's bench.
   if [ -n "$id" ]; then
-    scr=$HOME/.bashy/sessions/logs/$(printf '%s' "$id" | shasum -a 256 | cut -c1-12).log
+    scr=$(scrlog "$id")
     [ -f "$scr" ] && cp "$scr" "$ws.screen.log"
   fi
   void=$(grade.find "$ws.screen.log" "$VOID_RE")
   if [ -n "$void" ]; then
-    grade.record "$RUNS/results.jsonl" "$AGENT" "$PACK/$TASK" "$i" "$(( $(date +%s) - start ))" void "$steered" \\
+    grade.record "$RUNS/results.jsonl" "$AGENT" "$PACK/$TASK" "$i" "$(( $(date +%s) - start ))" void "$steered" \
       "{\"points\": 0, \"fail\": false, \"void\": true, \"why\": \"void: provider refused ($void)\"}"
     echo "  VOID $AGENT $TASK#$i: provider refused ($void) — stopping this agent's bench" >&2
     exit 3

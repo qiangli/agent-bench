@@ -70,6 +70,12 @@ The runner is `DAG.md`, run with `bashy dag` (see its header for the verdict
 rules); it drives agents through `bashy chat`. The format is plain files, so any
 harness can drive it.
 
+A run ends when its session exits, when both the workspace content (hashed in
+full, untracked files included) and the agent's screen have been quiet for
+`QUIET` seconds after the steer, when the workspace alone has been quiet for
+`THINK` seconds (the cap on a TUI that animates while it thinks), or at
+`BUDGET`.
+
 ### Pack self-checks and validation
 
 Packs provide self-check scripts and validators to verify that references pass, untouched fixtures or naive answers fail, and pass lines and hard rules hold:
