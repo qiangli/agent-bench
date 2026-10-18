@@ -180,6 +180,24 @@ class ProcEnvTest(unittest.TestCase):
 
 
 class PairTest(unittest.TestCase):
+    # pair() reads the host process table; feed it a fixed ps listing so the
+    # tests do not depend on whatever bench runners are live on this machine.
+    PS = "1 /sbin/launchd\n2 /bin/zsh\n"
+
+    def setUp(self):
+        import subprocess
+        from unittest import mock
+        import guarded_pair as gp
+        real = subprocess.run
+
+        def run(argv, *a, **kw):
+            if argv[:1] == ["/bin/ps"]:
+                return subprocess.CompletedProcess(argv, 0, stdout=self.PS, stderr="")
+            return real(argv, *a, **kw)
+        patcher = mock.patch.object(gp.subprocess, "run", side_effect=run)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def args(self, tmp):
         import types
         return types.SimpleNamespace(agent="a", pack="skill-uptake", task="t6-pdf-fact", model="m", budget=100,
@@ -222,6 +240,16 @@ class PairTest(unittest.TestCase):
         ps = "10 python3 scripts/guarded_live_arm.py --agent x\n11 /bin/zsh\n12 bashy dag run AGENT=y\n13 vim\n"
         self.assertEqual(len(gp.concurrent_runs(ps, {13})), 2)
         self.assertEqual(gp.concurrent_runs(ps, {10, 12}), [])
+
+    def test_live_runner_blocks_pair_before_any_request(self):
+        import guarded_pair as gp
+        self.PS = "99999 python3 scripts/guarded_live_arm.py --agent other\n"
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            calls = []
+            out = gp.pair(self.args(tmp), self.fake({"off": 0, "on": 0}, calls))
+            self.assertEqual(calls, [])
+            self.assertEqual(out["verdict"], "UNSCORED")
+            self.assertEqual(len(out["concurrent_runs"]), 1)
 
 
 if __name__ == "__main__":
