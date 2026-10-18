@@ -124,11 +124,31 @@ sig() {
 # bashy's `$!` is a job handle, not an OS pid, so a session is found by the id
 # `bashy chat` prints as it launches, never by matching the process table.
 sid() { sed -n 's/.*(id \([^)]*\)).*/\1/p' "$1" 2>/dev/null | head -1; }
-# Where bashy keeps a session's screen capture.
-scrlog() { echo "$HOME/.bashy/sessions/logs/$(printf '%s' "$1" | shasum -a 256 | cut -c1-12).log"; }
+# Where bashy keeps a session's screen capture: in the arm's own HOME ($ah).
+scrlog() { echo "$ah/.bashy/sessions/logs/$(printf '%s' "$1" | shasum -a 256 | cut -c1-12).log"; }
 # Wait for a session id to leave the host room: an agent is one identity, so a
-# lingering session refuses the next launch.
-gone() { for _ in $(seq 1 20); do bashy chat sessions 2>/dev/null | awk -v s="$1" 'NR > 1 && $1 == s {f = 1} END {exit !f}' || return 0; sleep 1; done; }
+# lingering session refuses the next launch. The room is the arm's.
+gone() { for _ in $(seq 1 20); do env "${armenv[@]}" bashy chat sessions 2>/dev/null | awk -v s="$1" 'NR > 1 && $1 == s {f = 1} END {exit !f}' || return 0; sleep 1; done; }
+# Keep an arm's raw session evidence (bashy session state, vendor transcripts;
+# never its seeded credentials) beside its record, then delete the arm HOME.
+# A failed copy keeps the arm HOME rather than lose the evidence.
+armdone() {
+  [ -n "${arm:-}" ] || return 0
+  python3 scripts/arm_home.py evidence --arm-dir "$arm" --dest "${1:-$rec.arm}" \
+    && rm -rf "$arm" || echo "  ARM EVIDENCE COPY FAILED: kept $arm" >&2
+  arm=
+}
+# Every arm runs under a temporary HOME; the temp roots themselves must not be
+# in the operator HOME, or even the workspace would be a write into it. Arm
+# HOMEs sit under a SHORT root (default /tmp): bashy's per-session control
+# socket lives in the arm HOME, and macOS's long $TMPDIR pushes its path past
+# the unix-socket limit (bind: invalid argument, file-control fallback).
+ARM_ROOT=${BENCH_ARM_ROOT:-/tmp}
+for d in "${TMPDIR:-/tmp}" "$ARM_ROOT"; do
+  python3 scripts/arm_home.py check --path "$d" \
+    || { echo "$d resolves into the operator HOME — refusing to run any arm" >&2; exit 1; }
+done
+arm=; ah=; acd=; armenv=()
 VOID_RE='rate_limit_error|[Qq]uota exhausted|[Uu]sage limit|billing_error|overloaded_error|hit your limit|insufficient_quota|invalid_request_error|model is not supported'
 # The answer key: this repository and its packs, graders and references, plus
 # earlier runs' logs and results. None of it is reachable from the isolated
@@ -144,31 +164,82 @@ for i in $(seq 1 "$K"); do
   # graders and references. $rec keeps the logs, and the workspace is copied
   # there only after grading.
   rec=$RUNS/$AGENT/$PACK-$TASK/$i
-  rm -rf "$rec" "$rec.session.log" "$rec.screen.log" "$rec.bashy-home"
+  rm -rf "$rec" "$rec.session.log" "$rec.screen.log" "$rec.bashy-home" "$rec.arm" "$rec".launch*.arm
   mkdir -p "$(dirname "$rec")"
   ws=$(mktemp -d "${TMPDIR:-/tmp}/bench-ws.XXXXXX")
   cp -R "$pack/fixture/." "$ws/"
   (cd "$ws" && git init -q -b main && git add -A && git -c user.name=bench -c user.email=bench@example.invalid commit -qm fixture)
 
-  # skill-uptake: the bashy skill is exported into the workspace the way a
-  # user installs it for this agent's tool (its project skill roots and
-  # instruction file); SKILL=off runs the no-skill baseline.
-  if [ "$PACK" = skill-uptake ] && [ "${SKILL:-on}" != off ]; then
-    tool=$(bashy agent show "$AGENT" --field tool) \
-      && (cd "$ws" && bashy skill export bashy --repo --tool "$tool" >/dev/null \
-        && git add -A && git -c user.name=bench -c user.email=bench@example.invalid commit -qm skill) \
-      || { echo "SKILL EXPORT FAILED $AGENT $TASK#$i" >&2; exit 1; }
+  # The agent's tool, resolved once for isolation, trust preseed and skill export.
+  tool=$(bashy agent show "$AGENT" --field tool)
+  bin=$(bashy tool show "$tool" --field cli.binary 2>/dev/null)
+  case $bin in */*) ;; *) bin= ;; esac  # pin a managed path; a bare name resolves on PATH
+
+  # Every arm gets its own temporary HOME (run #7 was killed for live arms
+  # writing into the operator's real HOME). scripts/arm_home.py seeds it with
+  # a read-only copy of the bashy config and the tool's auth/settings only,
+  # fails closed on any write target that resolves into the operator HOME, and
+  # prints the environment EVERY bashy and vendor command of this arm runs
+  # with: launch, steer, session listing, skill export, task setup. bashy's
+  # session state (rooms, screen logs) therefore lives in the arm HOME and
+  # stays functional; armdone copies the raw evidence to $rec.arm.
+  arm=$(mktemp -d "$ARM_ROOT/bench-arm.XXXXXX")
+  armout=$(python3 scripts/arm_home.py prepare --arm-dir "$arm" --tool "$tool" ${bin:+--binary "$bin"}) \
+    || { echo "ARM ISOLATION FAILED $AGENT $TASK#$i — not launched" >&2; rm -rf "$ws" "$arm"; exit 1; }
+  armenv=(); while IFS= read -r l; do [ -n "$l" ] && armenv+=("$l"); done <<< "$armout"
+  ah=$(sed -n 's/^HOME=//p' <<< "$armout")
+  # Claude reads $CLAUDE_CONFIG_DIR/.claude.json (arm_home seeds it there), so
+  # the trust entry goes to the arm's config dir, not to $ah.
+  acd=$(sed -n 's/^CLAUDE_CONFIG_DIR=//p' <<< "$armout")
+  [ -n "$ah" ] && [ -n "$acd" ] \
+    || { echo "ARM ISOLATION INCOMPLETE $AGENT $TASK#$i — not launched" >&2; armdone; rm -rf "$ws"; exit 1; }
+
+  # Claude-family tools gate on a per-directory trust dialog that
+  # --dangerously-skip-permissions does NOT bypass. `bashy chat` launches
+  # under a PTY, so the dialog appears and the session exits before its
+  # instruction is delivered ("exited before its instruction was
+  # delivered"), while direct `claude -p` with piped stdio skips it.
+  # Pre-seed the tool's declared trust_preseed entry for this workspace the
+  # same way the gate path does. The path must be canonical (/tmp is a
+  # symlink into /private on macOS; the symlinked form is ignored).
+  # Verified 2026-10-18: without the entry chat exits; with it the
+  # instruction is delivered. The entry is written to the ARM's
+  # $CLAUDE_CONFIG_DIR/.claude.json (explicit --home "$acd"; the helper has no
+  # default and refuses the operator HOME), merged additively into the read-only-copied config
+  # (scripts/trust_preseed.py: flock-guarded, atomic, permission-preserving,
+  # corrupt file backed aside).
+  if [ "$(bashy tool show "$tool" --field cli.launch.trust_preseed 2>/dev/null)" = .claude.json ]; then
+    python3 scripts/trust_preseed.py --workspace "$ws" --home "$acd" >/dev/null \
+      || { echo "TRUST PRESEED FAILED $AGENT $TASK#$i — not scored" >&2; armdone; rm -rf "$ws" "$ws.bashy-home"; continue; }
+  fi
+
+  # skill-uptake arm selectors (scripts/skill_arm.py; S21 paired comparison
+  # shares these paths and the same t6/t7 graders; off/on stay separate arms):
+  #   SKILL=off    no-skill baseline (nothing exported, default help format).
+  #   SKILL=on     prose skill folder: `skill export --repo` (default).
+  #   SKILL=yaml   single-record YAML skill: `skill export --to
+  #                $ws/.agents/skills --yaml` (writes bashy.yaml).
+  #   SKILL=script script-format help, NO prose export (BASHY_HELP_FORMAT=script
+  #                alone still exports prose, so this arm must not export; the
+  #                env marker is the grader's attribution signal).
+  # Unknown values, and an export that writes nothing (a tool with no
+  # integration: block), fail loudly rather than run or mislabel an arm.
+  helpfmt=()
+  if [ "$PACK" = skill-uptake ]; then
+    hf=$(env "${armenv[@]}" python3 scripts/skill_arm.py --workspace "$ws" --tool "$tool" --arm "${SKILL:-on}") \
+      || { echo "SKILL EXPORT FAILED $AGENT $TASK#$i (arm ${SKILL:-on})" >&2; armdone; rm -rf "$ws"; exit 1; }
+    while IFS= read -r l; do [ -n "$l" ] && helpfmt+=("$l"); done <<< "$hf"
   fi
 
   # A task with setup.py is seeded into an isolated store beside the workspace;
   # the agent is launched with that store's environment (see packs/floor/inbox-find).
-  iso=$(python3 scripts/pack_runner.py isolate --pack "$PACK" --task "$TASK" --workspace "$ws" --agent "$AGENT") \
-    || { echo "SETUP FAILED $AGENT $TASK#$i" >&2; exit 1; }
+  iso=$(env "${armenv[@]}" python3 scripts/pack_runner.py isolate --pack "$PACK" --task "$TASK" --workspace "$ws" --agent "$AGENT") \
+    || { echo "SETUP FAILED $AGENT $TASK#$i" >&2; armdone; exit 1; }
   isoenv=(); while IFS= read -r l; do [ -n "$l" ] && isoenv+=("$l"); done <<< "$iso"
 
   # Only the zero-quota dry-run agent may see the reference solution.
   ref=; [ "$AGENT" = benchbot-dry ] && ref=$pack/reference
-  env "${isoenv[@]}" BENCH_REF=$ref BASHY_CHAT_INBOX=off ENABLE_CLAUDEAI_MCP_SERVERS=false BASHY_ALLOW_UNSAFE_AGENT_LAUNCH=1 \
+  env "${armenv[@]}" "${isoenv[@]}" "${helpfmt[@]}" BENCH_REF=$ref BASHY_CHAT_INBOX=off ENABLE_CLAUDEAI_MCP_SERVERS=false BASHY_ALLOW_UNSAFE_AGENT_LAUNCH=1 \
     bashy chat --agent "$AGENT" -i --yolo -m "Read TASK.md and do the task." \
       --cwd "$ws" --task "bench-$TASK-$i" --timeout "$((BUDGET + 60))s" \
       > "$rec.session.log" 2>&1 &
@@ -197,7 +268,7 @@ for i in $(seq 1 "$K"); do
         commit) [ "$(git -C "$ws" rev-list --count HEAD)" -ge 2 ] && fire=1 ;;
         *s)     [ $el -ge "${trigger%s}" ] && fire=1 ;;
       esac
-      if [ $fire = 1 ] && [ -n "$id" ] && bashy chat steer "$id" "$(cat "$pack/steer.txt")" >/dev/null 2>&1; then
+      if [ $fire = 1 ] && [ -n "$id" ] && env "${armenv[@]}" bashy chat steer "$id" "$(cat "$pack/steer.txt")" >/dev/null 2>&1; then
         steered=1; last=$now; lastscr=$now; enters=0; echo "  steered $AGENT $TASK#$i at ${el}s"
       fi
     fi
@@ -206,7 +277,7 @@ for i in $(seq 1 "$K"); do
       # starting, leaving the prompt or the steer unsent in the input box; a
       # person would press Enter again. A bare Enter on an empty input is a
       # no-op for every agent, so it is safe to send after each quiet spell.
-      bashy chat steer "$id" --enter >/dev/null 2>&1; enters=$((enters + 1)); absorb=1
+      env "${armenv[@]}" bashy chat steer "$id" --enter >/dev/null 2>&1; enters=$((enters + 1)); absorb=1
     fi
     kill -0 $pid 2>/dev/null || { why=exited; break; }
     [ $el -ge "$BUDGET" ] && { why=budget; break; }
@@ -219,12 +290,16 @@ for i in $(seq 1 "$K"); do
     fi
   done
   if [ $why = exited ] && [ $el -lt 30 ]; then
-    # A session that dies at startup (e.g. a first-run trust dialog swallowed
-    # the prompt) never reached the model: retry once, never score it.
+    # A session that dies at startup never reached the model: retry once,
+    # never score it. (Claude trust dialogs are pre-seeded above; if this
+    # still fires for a claude agent, the preseed did not take — check the
+    # screen log in $rec.launch<attempt>.arm for "trust this folder", and
+    # the arm's .claude.json.)
     echo "  LAUNCH FAILED $AGENT $TASK#$i (attempt $attempt) — not scored; see $rec.session.log" >&2
     tail -5 "$rec.session.log" >&2
     rm -rf "$ws" "$ws.bashy-home"
     gone "$id"
+    armdone "$rec.launch$attempt.arm"
     [ $attempt = 2 ] && exit 1
     continue
   fi
@@ -251,7 +326,7 @@ for i in $(seq 1 "$K"); do
     grade.record "$RUNS/results.jsonl" "$AGENT" "$PACK/$TASK" "$i" "$(( $(date +%s) - start ))" void "$steered" \
       "{\"points\": 0, \"fail\": false, \"void\": true, \"why\": \"void: provider refused ($void)\"}"
     echo "  VOID $AGENT $TASK#$i: provider refused ($void) — stopping this agent's bench" >&2
-    cp -R "$ws" "$rec"; rm -rf "$ws" "$ws.bashy-home"
+    cp -R "$ws" "$rec"; rm -rf "$ws" "$ws.bashy-home"; armdone
     exit 3
   fi
   g=$(BENCH_SESSION_LOG="$rec.session.log" BENCH_SCREEN_LOG="$rec.screen.log" python3 scripts/pack_runner.py grade --pack "$PACK" --task "$TASK" --workspace "$ws" --fixture "$pack/fixture" 2>&1 | tail -1)
@@ -266,6 +341,7 @@ for i in $(seq 1 "$K"); do
   cp -R "$ws" "$rec"
   [ -d "$ws.bashy-home" ] && cp -R "$ws.bashy-home" "$rec.bashy-home"
   rm -rf "$ws" "$ws.bashy-home"
+  armdone
   break
  done
 done

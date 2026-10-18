@@ -137,7 +137,10 @@ def analyze_discovery(transcript: str, verb: str) -> tuple[int, str]:
     Returns:
         (discovery, format_use):
           - discovery: 1 if consulted skill / help / verb, 0 otherwise
-          - format_use: "skill", "mcp", "classic", or "none"
+          - format_use: "skill", "script", "yaml", "mcp", "classic", or "none".
+            "script" marks BASHY_HELP_FORMAT=script help use (the DAG script
+            arm exports no prose skill, so the env marker is the signal);
+            "yaml" marks the single-record YAML skill (bashy.yaml / --yaml).
     """
     if not transcript:
         return 0, "none"
@@ -167,8 +170,17 @@ def analyze_discovery(transcript: str, verb: str) -> tuple[int, str]:
     if not (has_skill or has_help or has_verb):
         return 0, "none"
 
-    # Detect format preference if specified or default to skill
-    if "BASHY_HELP_FORMAT=mcp" in transcript or "--format mcp" in transcript or '"mcp"' in transcript:
+    # Detect format preference if specified or default to skill. The paired
+    # script-vs-skill and YAML-vs-canonical arms (see DAG.md) need their own
+    # attribution: BASHY_HELP_FORMAT=script alone still exports the prose
+    # skill, so the DAG script arm exports nothing and the env marker is the
+    # signal; the YAML arm exports the single-record bashy.yaml.
+    if "BASHY_HELP_FORMAT=script" in transcript or "--format script" in transcript:
+        fmt = "script"
+    elif ("bashy.yaml" in transcript or "--yaml" in transcript
+            or "BASHY_HELP_FORMAT=yaml" in transcript or "--format yaml" in transcript):
+        fmt = "yaml"
+    elif "BASHY_HELP_FORMAT=mcp" in transcript or "--format mcp" in transcript or '"mcp"' in transcript:
         fmt = "mcp"
     elif "BASHY_HELP_FORMAT=classic" in transcript or "--format classic" in transcript:
         fmt = "classic"
