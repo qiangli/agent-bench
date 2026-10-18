@@ -1,0 +1,270 @@
+{
+ "agent": "claude-opus5.5",
+ "pack": "skill-uptake",
+ "task": "t6-pdf-fact",
+ "skill": "on",
+ "bashy": "/tmp/s446-candidate-bin/bashy",
+ "started": "2026-10-18T15:45:06.322865-07:00",
+ "verdict": "PASS",
+ "failures": [],
+ "protected_homes": [
+  "/Users/qiangli"
+ ],
+ "tool": "claude",
+ "model": "claude-opus-5-5",
+ "quota_before_read": {
+  "refresh_error": "rc=1 rows=[] stale=[] stderr='bashy model: analyzer door status 502'",
+  "source": "cached-fallback",
+  "fallback_nonstale": true
+ },
+ "quota_before": {
+  "5h": 5,
+  "week": 39
+ },
+ "negative_control_before": {
+  "decoy": {
+   "rc": -9,
+   "killed": true,
+   "absent": true
+  },
+  "real_home": {
+   "rc": -9,
+   "killed": true,
+   "absent": true
+  },
+  "ok": true
+ },
+ "canary_before": {
+  "verdict": "PASS",
+  "failures": [],
+  "sandbox_denials": [],
+  "known_leaks": {
+   "bashy inbox": "killed: writes real ~/.bashy/inbox"
+  }
+ },
+ "skill_preflight": {
+  "arm": "on",
+  "prepare_rc": 0,
+  "rc": 0,
+  "killed": false,
+  "skill_md": true,
+  "skill_sha256": "a5b4f49cc9a828004b4131124f53c813b88d4c5177c9809b6f1316f595c08b80",
+  "stderr": "",
+  "ok": true
+ },
+ "dag_argv": [
+  "/tmp/s446-candidate-bin/bashy",
+  "dag",
+  "run",
+  "AGENT=claude-opus5.5",
+  "PACK=skill-uptake",
+  "TASK=t6-pdf-fact",
+  "RUNS=/private/tmp/s10g.8kmpi4jx/runs",
+  "K=1",
+  "ATTEMPTS=1",
+  "SKILL=on",
+  "BUDGET=100",
+  "QUIET=20",
+  "THINK=60",
+  "MIN_POST_STEER=20"
+ ],
+ "dag_rc": 0,
+ "wall_s": 158.7,
+ "negative_control_after": {
+  "decoy": {
+   "rc": -9,
+   "killed": true,
+   "absent": true
+  },
+  "real_home": {
+   "rc": -9,
+   "killed": true,
+   "absent": true
+  },
+  "ok": true
+ },
+ "runner_real_home_writes": [],
+ "real_home_changed": [],
+ "host_concurrent_writes": [
+  {
+   "path": "/Users/qiangli/.bashy/coord/claims.lock",
+   "holders": [
+    "coord-claims:79355"
+   ]
+  },
+  {
+   "path": "/Users/qiangli/.bashy/room/.timeline.lock",
+   "holders": [
+    "room-emit:73128"
+   ]
+  },
+  {
+   "path": "/Users/qiangli/.bashy/room/member-claims.lock",
+   "holders": [
+    "room-prune:83451"
+   ]
+  },
+  {
+   "path": "/Users/qiangli/.claude.json",
+   "holders": [
+    "claude:73157",
+    "claude:63178"
+   ]
+  }
+ ],
+ "keychain_unchanged": true,
+ "sandbox_denials": [],
+ "sandbox_other_denials": [
+  "2026-10-18 15:46:47.230 E  sandboxd[63404:d38120e] [com.apple.sandbox.reporting:violation] Sandbox: claude(83113) deny(1) process-exec* /usr/bin/security",
+  "2026-10-18 15:46:47.329 E  sandboxd[63404:d38120e] [com.apple.sandbox.reporting:violation] Sandbox: claude(83113) deny(1) process-exec* /usr/bin/security"
+ ],
+ "vendor_processes": [
+  {
+   "pid": 83113,
+   "ppid": 83102,
+   "comm": "/Users/qiangli/.bashy/tools/claude/2.1.283/claude",
+   "sandboxed": 1,
+   "HOME": "/private/tmp/s10g.8kmpi4jx/bench-arm.o6H2aM/bench-armhome",
+   "CLAUDE_CONFIG_DIR": "/private/tmp/s10g.8kmpi4jx/bench-arm.o6H2aM/bench-armhome/.claude"
+  }
+ ],
+ "result": {
+  "agent": "claude-opus5.5",
+  "task": "skill-uptake/t6-pdf-fact",
+  "run": 1,
+  "secs": 122,
+  "ended": "idle",
+  "steered": true,
+  "points": 1,
+  "fail": false,
+  "result_ok": true,
+  "discovery": 0,
+  "format_use": "none",
+  "why": "PDF due date correct"
+ },
+ "workspace_skill": {
+  "skill_md": true,
+  "skill_sha256": "a5b4f49cc9a828004b4131124f53c813b88d4c5177c9809b6f1316f595c08b80",
+  "matches_preflight": true
+ },
+ "task_delivered": true,
+ "arm_workspace": "/private/tmp/s10g.8kmpi4jx/bench-ws.uEZPrx",
+ "usage": [
+  {
+   "file": ".claude/projects/-private-tmp-s10g-8kmpi4jx-bench-ws-uEZPrx/ae0dd7cf-e488-429d-8a3d-7c4a04f24636.jsonl",
+   "cwd": "/private/tmp/s10g.8kmpi4jx/bench-ws.uEZPrx",
+   "cwd_is_ws": true,
+   "model": "claude-opus-5-5",
+   "model_ok": true,
+   "session": "ae0dd7cf-e488-429d-8a3d-7c4a04f24636",
+   "request": "req_011CgAWs3GpyexGY8n5nvPGf",
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 10250,
+    "cache_read_input_tokens": 24924,
+    "output_tokens": 58
+   }
+  },
+  {
+   "file": ".claude/projects/-private-tmp-s10g-8kmpi4jx-bench-ws-uEZPrx/ae0dd7cf-e488-429d-8a3d-7c4a04f24636.jsonl",
+   "cwd": "/private/tmp/s10g.8kmpi4jx/bench-ws.uEZPrx",
+   "cwd_is_ws": true,
+   "model": "claude-opus-5-5",
+   "model_ok": true,
+   "session": "ae0dd7cf-e488-429d-8a3d-7c4a04f24636",
+   "request": "req_011CgAWsUwAXYaVpgEGS84zr",
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 6984,
+    "cache_read_input_tokens": 35174,
+    "output_tokens": 79
+   }
+  },
+  {
+   "file": ".claude/projects/-private-tmp-s10g-8kmpi4jx-bench-ws-uEZPrx/ae0dd7cf-e488-429d-8a3d-7c4a04f24636.jsonl",
+   "cwd": "/private/tmp/s10g.8kmpi4jx/bench-ws.uEZPrx",
+   "cwd_is_ws": true,
+   "model": "claude-opus-5-5",
+   "model_ok": true,
+   "session": "ae0dd7cf-e488-429d-8a3d-7c4a04f24636",
+   "request": "req_011CgAWsUwAXYaVpgEGS84zr",
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 6984,
+    "cache_read_input_tokens": 35174,
+    "output_tokens": 79
+   }
+  },
+  {
+   "file": ".claude/projects/-private-tmp-s10g-8kmpi4jx-bench-ws-uEZPrx/ae0dd7cf-e488-429d-8a3d-7c4a04f24636.jsonl",
+   "cwd": "/private/tmp/s10g.8kmpi4jx/bench-ws.uEZPrx",
+   "cwd_is_ws": true,
+   "model": "claude-opus-5-5",
+   "model_ok": true,
+   "session": "ae0dd7cf-e488-429d-8a3d-7c4a04f24636",
+   "request": "req_011CgAWsgEZymEpZuuNmsTcX",
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 528,
+    "cache_read_input_tokens": 42158,
+    "output_tokens": 85
+   }
+  },
+  {
+   "file": ".claude/projects/-private-tmp-s10g-8kmpi4jx-bench-ws-uEZPrx/ae0dd7cf-e488-429d-8a3d-7c4a04f24636.jsonl",
+   "cwd": "/private/tmp/s10g.8kmpi4jx/bench-ws.uEZPrx",
+   "cwd_is_ws": true,
+   "model": "claude-opus-5-5",
+   "model_ok": true,
+   "session": "ae0dd7cf-e488-429d-8a3d-7c4a04f24636",
+   "request": "req_011CgAWsvmS6dk3J3u1Ltk7z",
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 130,
+    "cache_read_input_tokens": 42686,
+    "output_tokens": 113
+   }
+  }
+ ],
+ "usage_total": {
+  "input_tokens": 10,
+  "output_tokens": 414,
+  "cache_creation_input_tokens": 24876,
+  "cache_read_input_tokens": 180116
+ },
+ "requests": 4,
+ "screen_usage_hints": {
+  "statusline": [
+   "| 5h 5%",
+   "|5h5%"
+  ],
+  "tokens": [
+   "\u2193 15 tokens",
+   "\u2193147tokens",
+   "\u2193222tokens",
+   "\u21932tokens",
+   "\u219358tokens",
+   "\u219363tokens"
+  ]
+ },
+ "quota_after_read": {
+  "refresh_error": "rc=1 rows=[] stale=[] stderr='bashy model: analyzer door status 502'",
+  "source": "cached-fallback",
+  "fallback_nonstale": true
+ },
+ "quota_after": {
+  "5h": 5,
+  "week": 39
+ },
+ "score": {
+  "points": 1,
+  "fail": false,
+  "result_ok": true,
+  "discovery": 0,
+  "format_use": "none",
+  "why": "PDF due date correct",
+  "ended": "idle",
+  "secs": 122
+ },
+ "finished": "2026-10-18T15:49:20.568521-07:00"
+}

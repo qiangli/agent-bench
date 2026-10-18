@@ -1,0 +1,5 @@
+2026/10/18 15:42:49 WARN llmbudget: missing subscription plan limit metadata; allowing model=opus5.5 plan=claude-max
+chat: claude-opus5.5 (claude:opus5.5) — governed + steerable (id claude-opus5-5). Ctrl-C ends it; from another terminal: `bashy chat steer claude-opus5-5 "..."` / `attach claude-opus5-5`.
+chat: instruction delivered to claude-opus5.5
+2026/10/18 15:44:25 WARN agentpty: terminating subagent tree pid=80167 reason="signal terminated forwarded from wrapper"
+chat: session ended (signal terminated forwarded from wrapper)

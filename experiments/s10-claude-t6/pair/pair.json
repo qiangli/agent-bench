@@ -1,0 +1,100 @@
+{
+ "agent": "claude-opus5.5",
+ "pack": "skill-uptake",
+ "task": "t6-pdf-fact",
+ "model": "claude-opus-5-5",
+ "budget": 100,
+ "quiet": 20,
+ "bashy": "/tmp/s446-candidate-bin/bashy",
+ "grader_sha256": "07313f529329d0b23bad2214de8a1b4dcc6af986c02b15bfdb22abbf3db5ccf2",
+ "started": "2026-10-18T15:41:10.494048-07:00",
+ "arms": [
+  {
+   "skill": "off",
+   "rc": 0,
+   "verdict": "PASS",
+   "score": {
+    "points": 1,
+    "fail": false,
+    "result_ok": true,
+    "discovery": 0,
+    "format_use": "none",
+    "why": "PDF due date correct",
+    "ended": "idle",
+    "secs": 106
+   },
+   "failures": [],
+   "requests": 4,
+   "usage_total": {
+    "input_tokens": 10,
+    "output_tokens": 581,
+    "cache_creation_input_tokens": 23655,
+    "cache_read_input_tokens": 177603
+   },
+   "quota_before": {
+    "5h": 5,
+    "week": 39
+   },
+   "quota_after": {
+    "5h": 5,
+    "week": 39
+   },
+   "quota_before_read": {
+    "refresh_error": "rc=1 rows=[] stale=[] stderr='bashy model: analyzer door status 502'",
+    "source": "cached-fallback",
+    "fallback_nonstale": true
+   },
+   "quota_after_read": {
+    "refresh_error": "rc=1 rows=[] stale=[] stderr='bashy model: analyzer door status 502'",
+    "source": "cached-fallback",
+    "fallback_nonstale": true
+   },
+   "wall_s": 140.8
+  },
+  {
+   "skill": "on",
+   "rc": 0,
+   "verdict": "PASS",
+   "score": {
+    "points": 1,
+    "fail": false,
+    "result_ok": true,
+    "discovery": 0,
+    "format_use": "none",
+    "why": "PDF due date correct",
+    "ended": "idle",
+    "secs": 122
+   },
+   "failures": [],
+   "requests": 4,
+   "usage_total": {
+    "input_tokens": 10,
+    "output_tokens": 414,
+    "cache_creation_input_tokens": 24876,
+    "cache_read_input_tokens": 180116
+   },
+   "quota_before": {
+    "5h": 5,
+    "week": 39
+   },
+   "quota_after": {
+    "5h": 5,
+    "week": 39
+   },
+   "quota_before_read": {
+    "refresh_error": "rc=1 rows=[] stale=[] stderr='bashy model: analyzer door status 502'",
+    "source": "cached-fallback",
+    "fallback_nonstale": true
+   },
+   "quota_after_read": {
+    "refresh_error": "rc=1 rows=[] stale=[] stderr='bashy model: analyzer door status 502'",
+    "source": "cached-fallback",
+    "fallback_nonstale": true
+   },
+   "wall_s": 158.7
+  }
+ ],
+ "verdict": "PAIRED",
+ "concurrent_runs": [],
+ "finished": "2026-10-18T15:49:20.583156-07:00"
+}
