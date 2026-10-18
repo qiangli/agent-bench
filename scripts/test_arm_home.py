@@ -231,6 +231,16 @@ class ArmHomeTest(unittest.TestCase):
         self.assertTrue((rec / "arm.json").is_file())
         self.assertFalse((rec / ".claude.json").exists())
         self.assertFalse((rec / ".config").exists())
+        # The manifest names what the arm held (credentials included) but never copies content.
+        (home / ".bashy" / "quota").mkdir(parents=True)
+        (home / ".bashy" / "quota" / "claude.json").write_text("{}")
+        (home / ".claude" / ".credentials.json").write_text("SECRET")
+        rec2 = Path(self.tmp.name) / "runs" / "2.arm"
+        self.assertIn(".bashy/quota", arm_home.evidence(str(self.arm), str(rec2), protected=self.protected))
+        listing = (rec2 / "arm-files.txt").read_text()
+        self.assertIn("6\t.claude/.credentials.json", listing)
+        self.assertFalse((rec2 / ".claude" / ".credentials.json").exists())
+        self.assertNotIn("SECRET", "".join(p.read_text(errors="replace") for p in rec2.rglob("*") if p.is_file()))
 
 
 if __name__ == "__main__":

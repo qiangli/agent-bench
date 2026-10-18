@@ -1,0 +1,6 @@
+{
+  "subscriber": "claude-opus5.5",
+  "to": "claude-opus5.5",
+  "room": "board",
+  "since": 1
+}

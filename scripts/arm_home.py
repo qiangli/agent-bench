@@ -70,8 +70,10 @@ TOOL_SEEDS["gemini"] = TOOL_SEEDS["agy"]
 # Raw evidence worth keeping per arm. Credentials are never listed here.
 # bashy removes a session's screen log when the session ends (the runner has
 # already copied it to $rec.screen.log); the room timeline and exec audit stay.
+# .bashy/quota holds the vendor status line's per-arm quota capture (Claude
+# runs `bashy model quota capture` from its status line): usage evidence.
 EVIDENCE = [
-    ".bashy/sessions", ".bashy/room", ".bashy/exec", ".claude/projects", ".codex/sessions",
+    ".bashy/sessions", ".bashy/room", ".bashy/exec", ".bashy/quota", ".claude/projects", ".codex/sessions",
     ".gemini/tmp", ".gemini/antigravity-cli/conversations", ".gemini/antigravity-cli/log",
     ".local/share/opencode/log",
 ]
@@ -187,6 +189,52 @@ def _no_links_out(home: str, protected: list[str]) -> None:
                 assert_outside(p, protected)
 
 
+# On macOS Claude keeps its login in the Keychain ("Claude Code-credentials"),
+# not in ~/.claude/.credentials.json, and with CLAUDE_CONFIG_DIR redirected it
+# looks for a differently named item: an arm HOME is logged out (measured
+# 2026-10-18: `claude auth status` -> loggedIn false). With
+# BENCH_CLAUDE_KEYCHAIN=1 the item is READ (never written) and copied to the
+# arm's $CLAUDE_CONFIG_DIR/.credentials.json, which Claude falls back to. The
+# refresh token is dropped, so the arm can never rotate the operator's login,
+# and an access token that would need a refresh during the arm fails closed.
+KEYCHAIN_SERVICE = "Claude Code-credentials"
+KEYCHAIN_MIN_VALID_S = 900
+
+
+def _keychain_secret(service: str) -> str:
+    import subprocess
+    r = subprocess.run(["/usr/bin/security", "find-generic-password", "-s", service, "-w"],
+                       capture_output=True, text=True, timeout=30)
+    if r.returncode:
+        raise UnsafeTarget(f"no {service!r} Keychain item (rc={r.returncode})")
+    return r.stdout.strip()
+
+
+def seed_claude_keychain(config_dir: str, protected: list[str], now: float | None = None,
+                         read=_keychain_secret) -> str:
+    """Write the arm's .credentials.json from the operator's Keychain login,
+    without its refresh token. Returns the relative seed label."""
+    import time
+    try:
+        data = json.loads(read(KEYCHAIN_SERVICE))
+        oauth = data["claudeAiOauth"]
+        left = oauth["expiresAt"] / 1000 - (time.time() if now is None else now)
+    except (ValueError, KeyError, TypeError) as error:
+        raise UnsafeTarget(f"unreadable Claude Keychain login: {type(error).__name__}")
+    if left < KEYCHAIN_MIN_VALID_S:
+        raise UnsafeTarget(f"Claude access token expires in {int(left)}s; an arm would refresh "
+                           "(rotate) the operator's login — refusing")
+    oauth.pop("refreshToken", None)
+    oauth.pop("refreshTokenExpiresAt", None)
+    dst = os.path.join(config_dir, ".credentials.json")
+    assert_outside(dst, protected)
+    os.makedirs(config_dir, mode=0o700, exist_ok=True)
+    fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as fout:
+        json.dump(data, fout)
+    return ".claude/.credentials.json (keychain, no refresh token)"
+
+
 def prepare(arm_dir: str, tool: str, source_home: str | None = None,
             binary: str | None = None, protected: list[str] | None = None) -> dict[str, str]:
     """Create and seed the arm HOME; return the environment the arm runs with."""
@@ -222,6 +270,9 @@ def prepare(arm_dir: str, tool: str, source_home: str | None = None,
     seeded_claude = os.path.join(home, ".claude.json")
     if os.path.isfile(seeded_claude):
         _copy_file(seeded_claude, os.path.join(env["CLAUDE_CONFIG_DIR"], ".claude.json"), protected)
+    if (tool == "claude" and os.environ.get("BENCH_CLAUDE_KEYCHAIN") == "1"
+            and not os.path.exists(os.path.join(env["CLAUDE_CONFIG_DIR"], ".credentials.json"))):
+        seeded.append(seed_claude_keychain(env["CLAUDE_CONFIG_DIR"], protected))
     if binary:
         # The vendor binary may live under the operator HOME (bashy's managed
         # tools dir); executing it is read-only, and naming it explicitly keeps
@@ -264,6 +315,15 @@ def evidence(arm_dir: str, dest: str, protected: list[str] | None = None) -> lis
     manifest = os.path.join(arm, "arm.json")
     if os.path.isfile(manifest):
         shutil.copyfile(manifest, os.path.join(dest, "arm.json"))
+    # Names and sizes (never contents) of everything the arm HOME held, so a
+    # missing transcript can be diagnosed after the arm HOME is deleted.
+    listing = []
+    for root, _, files in os.walk(home):
+        for name in files:
+            p = os.path.join(root, name)
+            listing.append(f"{os.lstat(p).st_size}\t{os.path.relpath(p, home)}")
+    with open(os.path.join(dest, "arm-files.txt"), "w", encoding="utf-8") as fh:
+        fh.write("\n".join(sorted(listing, key=lambda l: l.split("\t", 1)[1])) + "\n")
     for rel in EVIDENCE:
         src = os.path.join(home, rel)
         if os.path.isdir(src) and not os.path.islink(src):

@@ -1,0 +1,1 @@
+{"agent": "claude-opus5.5", "task": "skill-uptake/t6-pdf-fact", "run": 1, "secs": 117, "ended": "idle", "steered": true, "points": 1, "fail": false, "result_ok": true, "discovery": 0, "format_use": "none", "why": "PDF due date correct"}

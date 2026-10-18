@@ -1,0 +1,111 @@
+{
+ "agent": "claude-opus5.5",
+ "pack": "skill-uptake",
+ "task": "t6-pdf-fact",
+ "skill": "on",
+ "bashy": "/tmp/s446-candidate-bin/bashy",
+ "started": "2026-10-18T14:48:05.338138-07:00",
+ "verdict": "UNSCORED",
+ "failures": [
+  "no ['claude'] process seen under the runner (not launched?)",
+  "no task delivery ('instruction delivered') in the session log",
+  "no results row (unscored)",
+  "no attributable usage (arm transcript with token usage in the arm workspace)"
+ ],
+ "protected_homes": [
+  "/Users/qiangli"
+ ],
+ "tool": "claude",
+ "model": "claude-opus-5-5",
+ "quota_before": {
+  "5h": 3,
+  "week": 39
+ },
+ "negative_control_before": {
+  "decoy": {
+   "rc": -9,
+   "killed": true,
+   "absent": true
+  },
+  "real_home": {
+   "rc": -9,
+   "killed": true,
+   "absent": true
+  },
+  "ok": true
+ },
+ "dag_argv": [
+  "/tmp/s446-candidate-bin/bashy",
+  "dag",
+  "run",
+  "AGENT=claude-opus5.5",
+  "PACK=skill-uptake",
+  "TASK=t6-pdf-fact",
+  "RUNS=/private/tmp/s10g.qgimgub8/runs",
+  "K=1",
+  "ATTEMPTS=1",
+  "SKILL=on",
+  "BUDGET=100",
+  "QUIET=20",
+  "THINK=60",
+  "MIN_POST_STEER=20"
+ ],
+ "dag_rc": 1,
+ "wall_s": 30.2,
+ "negative_control_after": {
+  "decoy": {
+   "rc": -9,
+   "killed": true,
+   "absent": true
+  },
+  "real_home": {
+   "rc": -9,
+   "killed": true,
+   "absent": true
+  },
+  "ok": true
+ },
+ "runner_real_home_writes": [
+  {
+   "path": "/Users/qiangli/.bashy/coord/claims.lock",
+   "holders": [
+    "coord-claims:44908"
+   ]
+  },
+  {
+   "path": "/Users/qiangli/.bashy/room/.timeline.lock",
+   "holders": [
+    "room-rotate:44908"
+   ]
+  }
+ ],
+ "real_home_changed": [],
+ "host_concurrent_writes": [
+  {
+   "path": "/Users/qiangli/.bashy/room/member-claims.lock",
+   "holders": [
+    "shell:claude:44810:44810"
+   ]
+  }
+ ],
+ "keychain_unchanged": true,
+ "sandbox_denials": [],
+ "sandbox_other_denials": [],
+ "vendor_processes": [],
+ "result": null,
+ "task_delivered": false,
+ "arm_workspace": [],
+ "usage": [],
+ "usage_total": {
+  "input_tokens": 0,
+  "output_tokens": 0,
+  "cache_creation_input_tokens": 0,
+  "cache_read_input_tokens": 0
+ },
+ "requests": 0,
+ "quota_after": {
+  "5h": 3,
+  "week": 39
+ },
+ "finished": "2026-10-18T14:49:08.555186-07:00"
+}

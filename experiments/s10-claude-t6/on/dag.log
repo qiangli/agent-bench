@@ -1,0 +1,5 @@
+==> run
+SKILL EXPORT FAILED: on export rc=1: bashy skill: skills: tool "claude" declares no integration (add an integration: block to its definition)
+SKILL EXPORT FAILED claude-opus5.5 t6-pdf-fact#1 (arm on)
+==> run FAILED (exit 1)
+dag: 1/1 targets failed

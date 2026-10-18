@@ -1,0 +1,159 @@
+{
+ "agent": "benchbot-dry",
+ "pack": "skill-uptake",
+ "task": "t6-pdf-fact",
+ "skill": "off",
+ "bashy": "/tmp/s446-candidate-bin/bashy",
+ "started": "2026-10-18T14:43:32.490939-07:00",
+ "verdict": "FAIL",
+ "failures": [
+  "real HOME paths changed: ['/Users/qiangli/.bashy/coord/claims.lock', '/Users/qiangli/.bashy/room/.timeline.lock']",
+  "vendor process outside the guard: [{'pid': 42389, 'ppid': 42258, 'comm': '/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python', 'sandboxed': 0}, {'pid': 42467, 'ppid': 42258, 'comm': '/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python', 'sandboxed': 0}, {'pid': 42545, 'ppid': 42258, 'comm': '/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python', 'sandboxed': 1}, {'pid': 42551, 'ppid': 42258, 'comm': '/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python', 'sandboxed': 1}, {'pid': 42576, 'ppid': 42565, 'comm': '/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python', 'sandboxed': 1}, {'pid': 43453, 'ppid': 42258, 'comm': '/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python', 'sandboxed': 0}]",
+  "no attributable usage (arm transcript with token usage in the arm workspace)"
+ ],
+ "protected_homes": [
+  "/Users/qiangli"
+ ],
+ "tool": "benchbot",
+ "model": null,
+ "quota_before": {
+  "5h": 3,
+  "week": 39
+ },
+ "negative_control_before": {
+  "decoy": {
+   "rc": -9,
+   "killed": true,
+   "absent": true
+  },
+  "real_home": {
+   "rc": -9,
+   "killed": true,
+   "absent": true
+  },
+  "ok": true
+ },
+ "dag_argv": [
+  "/tmp/s446-candidate-bin/bashy",
+  "dag",
+  "run",
+  "AGENT=benchbot-dry",
+  "PACK=skill-uptake",
+  "TASK=t6-pdf-fact",
+  "RUNS=/private/tmp/s10g.qcosuwer/runs",
+  "K=1",
+  "ATTEMPTS=1",
+  "SKILL=off",
+  "BUDGET=60",
+  "QUIET=5",
+  "THINK=15",
+  "MIN_POST_STEER=5"
+ ],
+ "dag_rc": 0,
+ "wall_s": 118.3,
+ "negative_control_after": {
+  "decoy": {
+   "rc": -9,
+   "killed": true,
+   "absent": true
+  },
+  "real_home": {
+   "rc": -9,
+   "killed": true,
+   "absent": true
+  },
+  "ok": true
+ },
+ "real_home_changed": [
+  "/Users/qiangli/.bashy/coord/claims.lock",
+  "/Users/qiangli/.bashy/room/.timeline.lock"
+ ],
+ "host_concurrent_writes": [
+  {
+   "path": "/Users/qiangli/.bashy/room/member-claims.lock",
+   "holders": [
+    "shell:claude:42177:42177"
+   ]
+  }
+ ],
+ "keychain_unchanged": true,
+ "sandbox_denials": [],
+ "sandbox_other_denials": [],
+ "vendor_processes": [
+  {
+   "pid": 42389,
+   "ppid": 42258,
+   "comm": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python",
+   "sandboxed": 0
+  },
+  {
+   "pid": 42467,
+   "ppid": 42258,
+   "comm": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python",
+   "sandboxed": 0
+  },
+  {
+   "pid": 42545,
+   "ppid": 42258,
+   "comm": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python",
+   "sandboxed": 1
+  },
+  {
+   "pid": 42551,
+   "ppid": 42258,
+   "comm": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python",
+   "sandboxed": 1
+  },
+  {
+   "pid": 42576,
+   "ppid": 42565,
+   "comm": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python",
+   "sandboxed": 1
+  },
+  {
+   "pid": 43453,
+   "ppid": 42258,
+   "comm": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python",
+   "sandboxed": 0
+  }
+ ],
+ "result": {
+  "agent": "benchbot-dry",
+  "task": "skill-uptake/t6-pdf-fact",
+  "run": 1,
+  "secs": 86,
+  "ended": "idle",
+  "steered": true,
+  "points": 1,
+  "fail": false,
+  "result_ok": true,
+  "discovery": 0,
+  "format_use": "none",
+  "why": "PDF due date correct"
+ },
+ "task_delivered": true,
+ "arm_workspace": [],
+ "usage": [],
+ "usage_total": {
+  "input_tokens": 0,
+  "output_tokens": 0,
+  "cache_creation_input_tokens": 0,
+  "cache_read_input_tokens": 0
+ },
+ "requests": 0,
+ "quota_after": {
+  "5h": 3,
+  "week": 39
+ },
+ "score": {
+  "points": 1,
+  "fail": false,
+  "result_ok": true,
+  "discovery": 0,
+  "format_use": "none",
+  "why": "PDF due date correct",
+  "ended": "idle",
+  "secs": 86
+ },
+ "finished": "2026-10-18T14:46:03.855989-07:00"
+}

@@ -128,7 +128,7 @@ sid() { sed -n 's/.*(id \([^)]*\)).*/\1/p' "$1" 2>/dev/null | head -1; }
 scrlog() { echo "$ah/.bashy/sessions/logs/$(printf '%s' "$1" | shasum -a 256 | cut -c1-12).log"; }
 # Wait for a session id to leave the host room: an agent is one identity, so a
 # lingering session refuses the next launch. The room is the arm's.
-gone() { for _ in $(seq 1 20); do env "${armenv[@]}" bashy chat sessions 2>/dev/null | awk -v s="$1" 'NR > 1 && $1 == s {f = 1} END {exit !f}' || return 0; sleep 1; done; }
+gone() { for _ in $(seq 1 20); do "${guard[@]}" env "${armenv[@]}" bashy chat sessions 2>/dev/null | awk -v s="$1" 'NR > 1 && $1 == s {f = 1} END {exit !f}' || return 0; sleep 1; done; }
 # Keep an arm's raw session evidence (bashy session state, vendor transcripts;
 # never its seeded credentials) beside its record, then delete the arm HOME.
 # A failed copy keeps the arm HOME rather than lose the evidence.
@@ -149,6 +149,14 @@ for d in "${TMPDIR:-/tmp}" "$ARM_ROOT"; do
     || { echo "$d resolves into the operator HOME — refusing to run any arm" >&2; exit 1; }
 done
 arm=; ah=; acd=; armenv=()
+# BENCH_GUARD names a macOS sandbox-exec profile (scripts/guarded_live_arm.py
+# writes one: deny file-write* into the operator HOME, SIGKILL on a hit, no
+# Keychain CLI). Every isolated command of the arm — preflight lookups, trust
+# preseed, skill export, setup, the vendor launch and its descendants, steers
+# and session listing — then runs under it; the parent runner and grading do
+# not. ATTEMPTS=1 forbids the startup retry, so a guarded arm is one request.
+guard=(); [ -n "${BENCH_GUARD:-}" ] && guard=(sandbox-exec -f "$BENCH_GUARD")
+ATTEMPTS=${ATTEMPTS:-2}
 VOID_RE='rate_limit_error|[Qq]uota exhausted|[Uu]sage limit|billing_error|overloaded_error|hit your limit|insufficient_quota|invalid_request_error|model is not supported'
 # The answer key: this repository and its packs, graders and references, plus
 # earlier runs' logs and results. None of it is reachable from the isolated
@@ -158,7 +166,7 @@ VOID_RE='rate_limit_error|[Qq]uota exhausted|[Uu]sage limit|billing_error|overlo
 LEAK_RE="agent-bench(-[a-z0-9]+)?/|packs/[a-z][a-z0-9-]*/|/grader/|grade\\.py|pack_runner\\.py|\\.screen\\.log|\\.session\\.log|results\\.jsonl|$(basename "$RUNS")/"
 
 for i in $(seq 1 "$K"); do
- for attempt in 1 2; do
+ for attempt in $(seq 1 "$ATTEMPTS"); do
   # The agent works in a fresh directory of its own, AWAY from the bench: not
   # beside earlier runs' logs and results, not under the tree that holds the
   # graders and references. $rec keeps the logs, and the workspace is copied
@@ -179,8 +187,8 @@ for i in $(seq 1 "$K"); do
   preout=$(python3 scripts/arm_home.py prepare --arm-dir "$pre" --tool none) \
     || { echo "PREFLIGHT ISOLATION FAILED $AGENT $TASK#$i — not launched" >&2; rm -rf "$ws" "$pre"; exit 1; }
   preenv=(); while IFS= read -r l; do [ -n "$l" ] && preenv+=("$l"); done <<< "$preout"
-  tool=$(env "${preenv[@]}" bashy agent show "$AGENT" --field tool)
-  bin=$(env "${preenv[@]}" bashy tool show "$tool" --field cli.binary 2>/dev/null)
+  tool=$("${guard[@]}" env "${preenv[@]}" bashy agent show "$AGENT" --field tool)
+  bin=$("${guard[@]}" env "${preenv[@]}" bashy tool show "$tool" --field cli.binary 2>/dev/null)
   rm -rf "$pre"
   case $bin in */*) ;; *) bin= ;; esac  # pin a managed path; a bare name resolves on PATH
 
@@ -217,8 +225,8 @@ for i in $(seq 1 "$K"); do
   # default and refuses the operator HOME), merged additively into the read-only-copied config
   # (scripts/trust_preseed.py: flock-guarded, atomic, permission-preserving,
   # corrupt file backed aside).
-  if [ "$(env "${armenv[@]}" bashy tool show "$tool" --field cli.launch.trust_preseed 2>/dev/null)" = .claude.json ]; then
-    python3 scripts/trust_preseed.py --workspace "$ws" --home "$acd" >/dev/null \
+  if [ "$("${guard[@]}" env "${armenv[@]}" bashy tool show "$tool" --field cli.launch.trust_preseed 2>/dev/null)" = .claude.json ]; then
+    "${guard[@]}" python3 scripts/trust_preseed.py --workspace "$ws" --home "$acd" >/dev/null \
       || { echo "TRUST PRESEED FAILED $AGENT $TASK#$i — not scored" >&2; armdone; rm -rf "$ws" "$ws.bashy-home"; continue; }
   fi
 
@@ -235,20 +243,20 @@ for i in $(seq 1 "$K"); do
   # integration: block), fail loudly rather than run or mislabel an arm.
   helpfmt=()
   if [ "$PACK" = skill-uptake ]; then
-    hf=$(env "${armenv[@]}" python3 scripts/skill_arm.py --workspace "$ws" --tool "$tool" --arm "${SKILL:-on}") \
+    hf=$("${guard[@]}" env "${armenv[@]}" python3 scripts/skill_arm.py --workspace "$ws" --tool "$tool" --arm "${SKILL:-on}") \
       || { echo "SKILL EXPORT FAILED $AGENT $TASK#$i (arm ${SKILL:-on})" >&2; armdone; rm -rf "$ws"; exit 1; }
     while IFS= read -r l; do [ -n "$l" ] && helpfmt+=("$l"); done <<< "$hf"
   fi
 
   # A task with setup.py is seeded into an isolated store beside the workspace;
   # the agent is launched with that store's environment (see packs/floor/inbox-find).
-  iso=$(env "${armenv[@]}" python3 scripts/pack_runner.py isolate --pack "$PACK" --task "$TASK" --workspace "$ws" --agent "$AGENT") \
+  iso=$("${guard[@]}" env "${armenv[@]}" python3 scripts/pack_runner.py isolate --pack "$PACK" --task "$TASK" --workspace "$ws" --agent "$AGENT") \
     || { echo "SETUP FAILED $AGENT $TASK#$i" >&2; armdone; exit 1; }
   isoenv=(); while IFS= read -r l; do [ -n "$l" ] && isoenv+=("$l"); done <<< "$iso"
 
   # Only the zero-quota dry-run agent may see the reference solution.
   ref=; [ "$AGENT" = benchbot-dry ] && ref=$pack/reference
-  env "${armenv[@]}" "${isoenv[@]}" "${helpfmt[@]}" BENCH_REF=$ref BASHY_CHAT_INBOX=off ENABLE_CLAUDEAI_MCP_SERVERS=false BASHY_ALLOW_UNSAFE_AGENT_LAUNCH=1 \
+  "${guard[@]}" env "${armenv[@]}" "${isoenv[@]}" "${helpfmt[@]}" BENCH_REF=$ref BASHY_CHAT_INBOX=off ENABLE_CLAUDEAI_MCP_SERVERS=false BASHY_ALLOW_UNSAFE_AGENT_LAUNCH=1 \
     bashy chat --agent "$AGENT" -i --yolo -m "Read TASK.md and do the task." \
       --cwd "$ws" --task "bench-$TASK-$i" --timeout "$((BUDGET + 60))s" \
       > "$rec.session.log" 2>&1 &
@@ -277,7 +285,7 @@ for i in $(seq 1 "$K"); do
         commit) [ "$(git -C "$ws" rev-list --count HEAD)" -ge 2 ] && fire=1 ;;
         *s)     [ $el -ge "${trigger%s}" ] && fire=1 ;;
       esac
-      if [ $fire = 1 ] && [ -n "$id" ] && env "${armenv[@]}" bashy chat steer "$id" "$(cat "$pack/steer.txt")" >/dev/null 2>&1; then
+      if [ $fire = 1 ] && [ -n "$id" ] && "${guard[@]}" env "${armenv[@]}" bashy chat steer "$id" "$(cat "$pack/steer.txt")" >/dev/null 2>&1; then
         steered=1; last=$now; lastscr=$now; enters=0; echo "  steered $AGENT $TASK#$i at ${el}s"
       fi
     fi
@@ -286,7 +294,7 @@ for i in $(seq 1 "$K"); do
       # starting, leaving the prompt or the steer unsent in the input box; a
       # person would press Enter again. A bare Enter on an empty input is a
       # no-op for every agent, so it is safe to send after each quiet spell.
-      env "${armenv[@]}" bashy chat steer "$id" --enter >/dev/null 2>&1; enters=$((enters + 1)); absorb=1
+      "${guard[@]}" env "${armenv[@]}" bashy chat steer "$id" --enter >/dev/null 2>&1; enters=$((enters + 1)); absorb=1
     fi
     kill -0 $pid 2>/dev/null || { why=exited; break; }
     [ $el -ge "$BUDGET" ] && { why=budget; break; }
@@ -309,7 +317,7 @@ for i in $(seq 1 "$K"); do
     rm -rf "$ws" "$ws.bashy-home"
     gone "$id"
     armdone "$rec.launch$attempt.arm"
-    [ $attempt = 2 ] && exit 1
+    [ "$attempt" = "$ATTEMPTS" ] && exit 1
     continue
   fi
   # End the session and make sure it is GONE before the next run. Some TUIs ask
