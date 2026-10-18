@@ -89,6 +89,7 @@ class ArmHomeTest(unittest.TestCase):
                         "OPENCODE_CONFIG_DIR": os.path.join(real, ".config/opencode"),
                         "OPENCODE_CONFIG": os.path.join(real, ".config/opencode/x.json"),
                         "HOME": real, "XDG_CONFIG_HOME": os.path.join(real, ".config"),
+                        "GOCACHE": os.path.join(real, ".bashy/weave/agent-data/go-build-cache"),
                         "BASHY_HOME": os.path.join(real, ".bashy"),
                         "BASHY_MB_DIR": os.path.join(real, ".bashy/mb"),
                         "BASHY_SPRINT_DIR": os.path.join(real, ".bashy/sprint"),
@@ -103,6 +104,7 @@ class ArmHomeTest(unittest.TestCase):
                     self.assertTrue(merged[key] == home or merged[key].startswith(home + os.sep), key)
                 self.assertEqual(merged["CLAUDE_CONFIG_DIR"], os.path.join(home, ".claude"))
                 self.assertEqual(merged["BASHY_HOME"], os.path.join(home, ".bashy"))
+                self.assertEqual(merged["GOCACHE"], os.path.join(home, ".cache", "go-build"))
                 for key in ("BASHY_MB_DIR", "BASHY_SPRINT_DIR", "BASHY_ROOT"):
                     self.assertEqual(merged[key], "", key)  # cleared: bashy defaults under BASHY_HOME
                 self.assertEqual(merged["BASHY_TOOL_BINARY_CLAUDE"], "/usr/bin/true")  # not a location
@@ -114,6 +116,18 @@ class ArmHomeTest(unittest.TestCase):
             self.assertEqual(hits, [])
             import shutil
             shutil.rmtree(self.arm)
+
+    def test_go_cache_write_stays_in_isolated_home(self):
+        with forbid_writes(self.protected) as hits:
+            env = self.prepare(tool="ycode")
+            merged = arm_home.arm_environ({"GOCACHE": os.path.join(str(self.op), "go-cache")},
+                                           env, protected=self.protected)
+            cache = Path(merged["GOCACHE"])
+            cache.mkdir(parents=True)
+            (cache / "probe").write_text("x")
+        self.assertEqual(hits, [])
+        self.assertEqual((cache / "probe").read_text(), "x")
+        self.assertFalse((self.op / "go-cache").exists())
 
     def test_parent_agent_session_markers_cleared(self):
         # S10: an inherited CLAUDE_CODE_CHILD_SESSION turned off the arm's

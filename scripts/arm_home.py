@@ -90,6 +90,7 @@ EVIDENCE = [
 # to the operator HOME whatever HOME says.
 def vendor_overrides(home: str) -> dict[str, str]:
     return {
+        "GOCACHE": os.path.join(home, ".cache", "go-build"),
         "BASHY_HOME": os.path.join(home, ".bashy"),
         "YCODE_DATA_DIR": os.path.join(home, ".bashy", "ycode", "harness"),
         "CLAUDE_CONFIG_DIR": os.path.join(home, ".claude"),
@@ -102,7 +103,7 @@ def vendor_overrides(home: str) -> dict[str, str]:
 
 # Inherited keys the arm env must override or drop: every value these carry
 # is a write target for some vendor or for bashy.
-GUARDED_KEYS = ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
+GUARDED_KEYS = ("HOME", "GOCACHE", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
                 "XDG_CACHE_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "GEMINI_CLI_HOME",
                 "OPENCODE_CONFIG_DIR", "OPENCODE_CONFIG", "BASHY_HOME", "YCODE_DATA_DIR")
 

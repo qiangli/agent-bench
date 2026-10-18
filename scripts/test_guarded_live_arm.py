@@ -77,6 +77,22 @@ class DagGuardWiringTest(unittest.TestCase):
 
 
 class WrapperParsingTest(unittest.TestCase):
+    def test_wrapper_ancestors_are_separate_and_vendor_escape_fails(self):
+        rows = {
+            10: {"pid": 10, "ppid": 1, "comm": "bashy", "sandboxed": 0},
+            11: {"pid": 11, "ppid": 10, "comm": "bashy", "sandboxed": 0},
+            12: {"pid": 12, "ppid": 11, "comm": "bashy", "sandboxed": 1},
+            13: {"pid": 13, "ppid": 12, "comm": "bashy", "sandboxed": 1},
+            14: {"pid": 14, "ppid": 13, "comm": "go", "sandboxed": 0},
+            15: {"pid": 15, "ppid": 11, "comm": "bashy", "command": "bashy chat run", "sandboxed": 0},
+            16: {"pid": 16, "ppid": 11, "comm": "bashy", "command": "bashy agent show", "sandboxed": 0},
+        }
+        wrappers, descendants, vendors = g.classify_vendor_processes(rows, 10, {"bashy"})
+        self.assertEqual({r["pid"] for r in wrappers}, {11, 16})
+        self.assertEqual({r["pid"] for r in descendants}, {12, 13, 14, 15})
+        self.assertEqual({r["pid"] for r in vendors}, {12, 13, 15})
+        self.assertFalse(all(r["sandboxed"] == 1 for r in descendants))
+
     def test_tree_denials(self):
         home = "/Users/op"
         log = "\n".join([

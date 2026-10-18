@@ -258,16 +258,17 @@ def proc_env(pid: int, keys: tuple[str, ...]) -> dict:
 
 
 class VendorWatch(canary.Tree):
-    """The runner's process tree, plus a sandbox_check of every vendor pid."""
+    """Capture the runner tree so wrapper ancestors and guarded descendants can be separated."""
 
     def __init__(self):
         self.vendor: dict[int, dict] = {}
+        self.processes: dict[int, dict] = {}
         self.comms: set[str] = set()
         super().__init__()
 
     def _poll(self):
         while not self.stop.wait(0.25):
-            r = subprocess.run(["/bin/ps", "-axo", "pid=,ppid=,comm="], capture_output=True, text=True)
+            r = subprocess.run(["/bin/ps", "-axo", "pid=,ppid=,command="], capture_output=True, text=True)
             rows = []
             for l in r.stdout.splitlines():
                 parts = l.split(None, 2)
@@ -280,10 +281,50 @@ class VendorWatch(canary.Tree):
                     if ppid in self.pids and pid not in self.pids:
                         self.pids.add(pid)
                         grew = True
-            for pid, ppid, comm in rows:
-                if pid in self.pids and os.path.basename(comm) in self.comms and pid not in self.vendor:
-                    self.vendor[pid] = {"pid": pid, "ppid": ppid, "comm": comm, "sandboxed": sandboxed(pid),
-                                        **proc_env(pid, ("HOME", "CLAUDE_CONFIG_DIR"))}
+            for pid, ppid, command in rows:
+                if pid in self.pids and pid not in self.processes:
+                    try:
+                        state = sandboxed(pid)
+                    except (OSError, ProcessLookupError):
+                        continue  # exited between ps and sandbox_check
+                    self.processes[pid] = {"pid": pid, "ppid": ppid,
+                                           "comm": command.split()[0], "command": command,
+                                           "sandboxed": state,
+                                           **(proc_env(pid, ("HOME", "CLAUDE_CONFIG_DIR"))
+                                              if os.path.basename(command.split()[0]) in self.comms else {})}
+
+
+def classify_vendor_processes(processes: dict[int, dict], runner_pid: int,
+                              vendor_comms: set[str]) -> tuple[list[dict], list[dict], list[dict]]:
+    """Wrapper ancestors precede the first guarded node. Every process below
+    a guarded node must remain guarded, including children with other names."""
+    guarded: set[int] = set()
+    pending = set(processes) - {runner_pid}
+    while pending:
+        ready = {pid for pid in pending if processes[pid]["ppid"] not in pending}
+        if not ready:
+            raise ValueError("cycle in observed process ancestry")
+        for pid in ready:
+            row = processes[pid]
+            if row["sandboxed"] == 1 or row["ppid"] in guarded:
+                guarded.add(pid)
+        pending -= ready
+    def escaped_vendor(row: dict) -> bool:
+        command = row.get("command", "")
+        words = command.split()
+        name = os.path.basename(row["comm"])
+        return (name in vendor_comms and
+                (name != "bashy" or (len(words) > 1 and words[1] in {"chat", "ycode"})))
+
+    wrappers = [row for pid, row in processes.items()
+                if pid != runner_pid and pid not in guarded and not escaped_vendor(row)]
+    # Bashy DAG wrappers can spawn preflight helpers beside the guarded arm.
+    # A vendor CLI or bashy chat launched in that branch remains a failure.
+    descendants = [row for pid, row in processes.items()
+                   if pid != runner_pid and (pid in guarded or escaped_vendor(row))]
+    vendors = [row for row in descendants if os.path.basename(row["comm"]) in vendor_comms]
+    return wrappers, descendants, vendors
+
 
 
 def tree_denials(log_text: str, pids: set[int], homes: list[str]) -> tuple[list[str], list[str]]:
@@ -527,13 +568,16 @@ def run(args) -> int:
         if writes:
             report["failures"].append(f"write into a real home attempted: {writes[:3]}")
 
-        report["vendor_processes"] = list(watch.vendor.values())
-        if not watch.vendor:
+        wrappers, descendants, vendors = classify_vendor_processes(watch.processes, proc.pid, watch.comms)
+        report["wrapper_ancestors"] = wrappers
+        report["guarded_descendants"] = descendants
+        report["vendor_processes"] = vendors
+        if not vendors:
             report["failures"].append(f"no {sorted(watch.comms)} process seen under the runner (not launched?)")
-        elif not all(v["sandboxed"] == 1 for v in watch.vendor.values()):
-            report["failures"].append(f"vendor process outside the guard: {report['vendor_processes']}")
-        iso = [v for v in watch.vendor.values()
-               if not all(v.get(k) and os.path.realpath(v[k]).startswith(root + "/") for k in ("HOME", "CLAUDE_CONFIG_DIR"))]
+        if not all(v["sandboxed"] == 1 for v in descendants):
+            report["failures"].append("process below guarded arm escaped sandbox")
+        iso = [v for v in vendors if not all(v.get(k) and os.path.realpath(v[k]).startswith(root + "/")
+                                               for k in ("HOME", "CLAUDE_CONFIG_DIR"))]
         if iso:
             report["failures"].append(f"vendor process without an isolated HOME/CLAUDE_CONFIG_DIR: {iso}")
 
