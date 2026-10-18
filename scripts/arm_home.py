@@ -91,6 +91,7 @@ EVIDENCE = [
 def vendor_overrides(home: str) -> dict[str, str]:
     return {
         "BASHY_HOME": os.path.join(home, ".bashy"),
+        "YCODE_DATA_DIR": os.path.join(home, ".bashy", "ycode", "harness"),
         "CLAUDE_CONFIG_DIR": os.path.join(home, ".claude"),
         "CODEX_HOME": os.path.join(home, ".codex"),
         "GEMINI_CLI_HOME": home,
@@ -103,7 +104,7 @@ def vendor_overrides(home: str) -> dict[str, str]:
 # is a write target for some vendor or for bashy.
 GUARDED_KEYS = ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
                 "XDG_CACHE_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "GEMINI_CLI_HOME",
-                "OPENCODE_CONFIG_DIR", "OPENCODE_CONFIG", "BASHY_HOME")
+                "OPENCODE_CONFIG_DIR", "OPENCODE_CONFIG", "BASHY_HOME", "YCODE_DATA_DIR")
 
 # bashy honours many more per-store overrides (BASHY_MB_DIR, BASHY_SPRINT_DIR,
 # BASHY_KB_DIR, BASHY_PTY_DIR, BASHY_ROOT, BASHY_OTEL_SPOOL, ...). Rather than track the

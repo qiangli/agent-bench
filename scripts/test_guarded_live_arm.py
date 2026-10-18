@@ -129,6 +129,13 @@ class WrapperParsingTest(unittest.TestCase):
         self.assertIn("below", g.balance_ok(dict(row, balance=0.20), 0.50))
         self.assertIn("no fresh", g.balance_ok(dict(row, stale=True), 0.50))
 
+    def test_ycode_native_route_budget(self):
+        body = json.dumps({"spec": {"routes": {"main": {"budget": {"maxCostUSD": 3}}}}})
+        with mock.patch.object(g.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=body)):
+            self.assertEqual(g.ycode_native_budget("/bin/bashy"), 3.0)
+        with mock.patch.object(g.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="{}")):
+            self.assertIsNone(g.ycode_native_budget("/bin/bashy"))
+
     def test_ycode_receipt_counts_requests_and_exact_tokens(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             root = Path(tmp, ".bashy", "ycode", "harness")
@@ -136,10 +143,10 @@ class WrapperParsingTest(unittest.TestCase):
             (root / "payloads").mkdir()
             ref = "sha256:" + "a" * 64
             messages = [{"role": "user", "content": []},
-                        {"role": "assistant", "model": "kimi-k2.6",
+                        {"role": "assistant",
                          "usage": {"input_tokens": 12, "output_tokens": 4}}]
             (root / "payloads" / ("a" * 64)).write_text(json.dumps(messages))
-            events = [{"session_id": "s1", "type": "llm.requested"},
+            events = [{"session_id": "s1", "type": "llm.requested", "data": {"model_ref": "primary"}},
                       {"session_id": "s1", "type": "session.turn-committed",
                        "data": {"messages_ref": ref}}]
             (root / "sessions" / "events.jsonl").write_text("\n".join(map(json.dumps, events)))
@@ -147,7 +154,7 @@ class WrapperParsingTest(unittest.TestCase):
             self.assertEqual(requests, 1)
             self.assertEqual(usage[0]["usage"], {"input_tokens": 12, "output_tokens": 4})
             self.assertTrue(usage[0]["model_ok"])
-            events.insert(1, {"session_id": "s1", "type": "llm.requested"})
+            events.insert(1, {"session_id": "s1", "type": "llm.requested", "data": {"model_ref": "primary"}})
             (root / "sessions" / "events.jsonl").write_text("\n".join(map(json.dumps, events)))
             self.assertEqual(g.ycode_receipt(tmp, "kimi-k2.6")[1], 2)
             events.append({"session_id": "other", "type": "llm.requested"})
@@ -155,23 +162,25 @@ class WrapperParsingTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "one isolated"):
                 g.ycode_receipt(tmp, "kimi-k2.6")
 
-    def test_ycode_preflight_refuses_before_dispatch(self):
+    def test_ycode_preflight_refuses_insufficient_balance_before_dispatch(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             args = SimpleNamespace(evidence=tmp, agent="ycode-kimi-k2.6", pack="skill-uptake",
                                    task="t6-pdf-fact", skill="script", bashy="/bin/bashy",
                                    tool="ycode", model="kimi-k2.6", quota_label="kimi",
-                                   spend_ceiling=0.50)
+                                   spend_ceiling=3.0, budget=100, quiet=20)
             row = {"label": "kimi", "status": "ok", "stale": False,
-                   "classification": "measured", "balance_unit": "USD", "balance": 19.04183}
+                   "classification": "measured", "balance_unit": "USD", "balance": 1.0}
             with mock.patch.object(g.sys, "platform", "darwin"), \
                  mock.patch.object(g.shutil, "which", return_value="/usr/bin/sandbox-exec"), \
+                 mock.patch.object(g.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="kimi-k2.6\n")), \
+                 mock.patch.object(g, "ycode_native_budget", return_value=3.0), \
                  mock.patch.object(g, "balance", return_value=(row, json.dumps({"items": [row]}))), \
                  mock.patch.object(g.subprocess, "Popen") as launch:
                 self.assertEqual(g.run(args), 2)
                 launch.assert_not_called()
             report = json.loads(Path(tmp, "report.json").read_text())
             self.assertEqual(report["verdict"], "REFUSED")
-            self.assertIn("zero requests", report["failures"][-1])
+            self.assertIn("below", report["failures"][-1])
 
     def test_profile_denies_homes_decoy_and_keychain_cli(self):
         p = g.guard_profile(["/Users/op"], "/private/tmp/d")

@@ -1,0 +1,65 @@
+{
+  "verdict": "UNSCORED",
+  "failures": [
+    "write into a real home attempted: ['2026-10-18 15:59:00.980 E  sandboxd[92678:d39b0c1] [com.apple.sandbox.reporting:violation] Sandbox: go(93117) deny(1) file-write-create /Users/qiangli/.bashy/weave/agent-bench-224072e0/agent-data/go-build-cache/run-14']",
+    "vendor process outside the guard: [{'pid': 92701, 'ppid': 92691, 'comm': '/Users/qiangli/.local/bin/bashy', 'sandboxed': 0}, {'pid': 93062, 'ppid': 92701, 'comm': '/Users/qiangli/.local/bin/bashy', 'sandboxed': 0}, {'pid': 93065, 'ppid': 92701, 'comm': 'bashy', 'sandboxed': 1}, {'pid': 93066, 'ppid': 93065, 'comm': '/Users/qiangli/.local/bin/bashy', 'sandboxed': 1}, {'pid': 93069, 'ppid': 93066, 'comm': '/Users/qiangli/.local/bin/bashy', 'sandboxed': 1}, {'pid': 93072, 'ppid': 93069, 'comm': '/Users/qiangli/.local/bin/bashy', 'sandboxed': 1}, {'pid': 93074, 'ppid': 93072, 'comm': '/Users/qiangli/.local/bin/bashy', 'sandboxed': 1}, {'pid': 93076, 'ppid': 93072, 'comm': '/Users/qiangli/.local/bin/bashy', 'sandboxed': 1}]",
+    "no results row (unscored)",
+    "no attributable usage (arm transcript with token usage in the arm workspace)",
+    "no ycode provider request recorded"
+  ],
+  "dag_rc": 1,
+  "wall_s": 55.1,
+  "task_delivered": true,
+  "requests": 0,
+  "balance_before_usd": 19.04183,
+  "balance_after_usd": 19.04183,
+  "balance_delta_usd": 0.0,
+  "negative_control_before": {
+    "decoy": {
+      "rc": -9,
+      "killed": true,
+      "absent": true
+    },
+    "real_home": {
+      "rc": -9,
+      "killed": true,
+      "absent": true
+    },
+    "ok": true
+  },
+  "negative_control_after": {
+    "decoy": {
+      "rc": -9,
+      "killed": true,
+      "absent": true
+    },
+    "real_home": {
+      "rc": -9,
+      "killed": true,
+      "absent": true
+    },
+    "ok": true
+  },
+  "real_home_changed": [],
+  "sandbox_denials": [
+    "2026-10-18 15:59:00.980 E  sandboxd[92678:d39b0c1] [com.apple.sandbox.reporting:violation] Sandbox: go(93117) deny(1) file-write-create /Users/qiangli/.bashy/weave/agent-bench-224072e0/agent-data/go-build-cache/run-14"
+  ],
+  "usage_total": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0
+  },
+  "score": null,
+  "script_cli_invocations": 1,
+  "prose_cli_invocations": 0,
+  "prose_score": "unmeasured",
+  "prose_usage": "unmeasured",
+  "zero_model_canary": {
+    "verdict": "PASS",
+    "real_home_changed": [],
+    "sandbox_denials": [],
+    "arm_state_created": true,
+    "guard": "sandbox-exec deny file-write* + SIGKILL; decoy verified"
+  }
+}

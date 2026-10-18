@@ -139,6 +139,19 @@ def balance_ok(row: dict, remaining_usd: float) -> str | None:
     return None
 
 
+def ycode_native_budget(bashy: str) -> float | None:
+    """Read the authored YOLO route's pre-request dollar ceiling."""
+    r = subprocess.run([bashy, "ycode", "--yolo", "config", "show"],
+                       capture_output=True, text=True, timeout=30)
+    if r.returncode:
+        return None
+    try:
+        value = json.loads(r.stdout)["spec"]["routes"]["main"]["budget"]["maxCostUSD"]
+    except (ValueError, KeyError, TypeError):
+        return None
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
 def quota_ok(rows: dict, max_5h: int, max_week: int) -> str | None:
     for window, cap in (("5h", max_5h), ("week", max_week)):
         row = rows.get(window)
@@ -363,8 +376,12 @@ def ycode_receipt(arm_evidence: str, model: str | None) -> tuple[list[dict], int
         if not all(isinstance(usage.get(k), int) and not isinstance(usage[k], bool) and usage[k] >= 0
                    for k in ("input_tokens", "output_tokens")):
             raise ValueError("ycode assistant usage lacks exact token counts")
-        out.append({"session": next(iter(sessions)), "model": msg.get("model"),
-                    "model_ok": model is None or msg.get("model") == model,
+        # Ycode's committed assistant messages omit a model id. The isolated
+        # fleet binding and llm.requested model_ref establish the route.
+        refs = {e.get("data", {}).get("model_ref") for e in requests}
+        out.append({"session": next(iter(sessions)), "model": model,
+                    "model_source": "fleet binding; ycode route primary",
+                    "model_ok": refs == {"primary"},
                     "usage": {k: v for k, v in usage.items() if isinstance(v, int) and not isinstance(v, bool)}})
     return out, len(requests)
 
@@ -394,6 +411,14 @@ def run(args) -> int:
     report["tool"], report["model"] = tool, model
 
     if tool == "ycode":
+        bound = subprocess.run([args.bashy, "agent", "show", args.agent, "--field", "model"],
+                               capture_output=True, text=True, timeout=30)
+        report["fleet_model"] = bound.stdout.strip()
+        if bound.returncode or not model or report["fleet_model"] != model:
+            report["failures"].append("fleet model binding does not match requested Kimi model")
+        report["native_route_budget_usd"] = ycode_native_budget(args.bashy)
+        if report["native_route_budget_usd"] is None or report["native_route_budget_usd"] > args.spend_ceiling:
+            report["failures"].append("ycode native route budget is absent or exceeds approved ceiling")
         bal, raw = balance(args.bashy, args.quota_label or "kimi")
         with open(os.path.join(ev, "quota.before.json"), "w", encoding="utf-8") as fh:
             fh.write(raw)
@@ -401,18 +426,18 @@ def run(args) -> int:
         why = balance_ok(bal, args.spend_ceiling)
         if why:
             report["failures"].append(f"balance gate: {why}")
-        # The installed Genie/Ycode profile permits many provider calls and a
-        # USD 3 route budget. A wall timeout and a post-run receipt cannot
-        # enforce the requested one-call/USD 0.50 ceiling before spending.
-        report["failures"].append("ycode request cap and USD 0.50 hard cost cap are unverified; zero requests")
-        return save(2)
-    rows, raw, report["quota_before_read"] = quota(args.bashy, args.quota_label or tool)
-    open(os.path.join(ev, "quota.before.json"), "w").write(raw)
-    report["quota_before"] = {w: r.get("used_percent") for w, r in rows.items()}
-    why = quota_ok(rows, args.max_5h, args.max_week)
-    if why:
-        report["failures"].append(f"quota gate: {why}")
-        return save(2)
+        if args.spend_ceiling > 3 or args.budget > 100 or args.quiet != 20:
+            report["failures"].append("ycode arm exceeds approved native budget or timing")
+        if report["failures"]:
+            return save(2)
+    else:
+        rows, raw, report["quota_before_read"] = quota(args.bashy, args.quota_label or tool)
+        open(os.path.join(ev, "quota.before.json"), "w").write(raw)
+        report["quota_before"] = {w: r.get("used_percent") for w, r in rows.items()}
+        why = quota_ok(rows, args.max_5h, args.max_week)
+        if why:
+            report["failures"].append(f"quota gate: {why}")
+            return save(2)
 
     root = os.path.realpath(tempfile.mkdtemp(prefix="s10g.", dir="/tmp"))
     arm_home.assert_outside(root, homes)
@@ -457,7 +482,7 @@ def run(args) -> int:
             proc = subprocess.Popen(argv, cwd=REPO, env=env, stdout=log, stderr=subprocess.STDOUT)
             watch.add_root(proc.pid)
             try:
-                rc = proc.wait(timeout=args.budget + 75)
+                rc = proc.wait(timeout=180 if tool == "ycode" else args.budget + 75)
             except subprocess.TimeoutExpired:
                 proc.kill()
                 rc = proc.wait()
@@ -576,8 +601,8 @@ def run(args) -> int:
         if not any(u["model_ok"] and (tool == "ycode" or (u["cwd_is_ws"] and u["cwd"].startswith(root + "/"))) for u in usage):
             report["failures"].append("no attributable usage (arm transcript with token usage in the arm workspace)")
         report["requests"] = request_count
-        if tool == "ycode" and request_count != 1:
-            report["failures"].append(f"ycode provider requests {request_count}, expected exactly one")
+        if tool == "ycode" and request_count < 1:
+            report["failures"].append("no ycode provider request recorded")
         # Not scoring evidence (a screen is not a usage record), but kept so an
         # arm whose transcript never reached disk is still diagnosable.
         plain = re.sub(r"\x1b\[[0-9;?>]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)", "", screen)
@@ -585,11 +610,20 @@ def run(args) -> int:
             "statusline": sorted(set(re.findall(r"\| ?5h ?\d+%", plain))),
             "tokens": sorted(set(re.findall(r"[↓↑] ?\d+ ?tokens", plain)))}
 
-        rows, raw, report["quota_after_read"] = quota(args.bashy, args.quota_label or tool)
-        open(os.path.join(ev, "quota.after.json"), "w").write(raw)
-        report["quota_after"] = {w: r.get("used_percent") for w, r in rows.items()}
-        if quota_ok(rows, 101, 101):
-            report["failures"].append(f"quota after not measured/nonstale: {quota_ok(rows, 101, 101)}")
+        if tool == "ycode":
+            bal, raw = balance(args.bashy, args.quota_label or "kimi")
+            open(os.path.join(ev, "quota.after.json"), "w").write(raw)
+            report["balance_after_usd"] = bal.get("balance")
+            if balance_ok(bal, 0):
+                report["failures"].append("no fresh measured after balance")
+            if isinstance(report.get("balance_before_usd"), (int, float)) and isinstance(bal.get("balance"), (int, float)):
+                report["balance_delta_usd"] = round(report["balance_before_usd"] - bal["balance"], 8)
+        else:
+            rows, raw, report["quota_after_read"] = quota(args.bashy, args.quota_label or tool)
+            open(os.path.join(ev, "quota.after.json"), "w").write(raw)
+            report["quota_after"] = {w: r.get("used_percent") for w, r in rows.items()}
+            if quota_ok(rows, 101, 101):
+                report["failures"].append(f"quota after not measured/nonstale: {quota_ok(rows, 101, 101)}")
 
         scored = bool(row) and "result_ok" in row and not row.get("void")
         if scored:
@@ -619,7 +653,7 @@ def main(argv=None) -> int:
     ap.add_argument("--max-5h", type=int, default=80)
     ap.add_argument("--max-week", type=int, default=90)
     ap.add_argument("--skip-canary", action="store_true", help="tests only: skip the zero-model canary")
-    ap.add_argument("--spend-ceiling", type=float, default=0.50)
+    ap.add_argument("--spend-ceiling", type=float, default=3.0)
     args = ap.parse_args(argv)
     args.bashy = os.path.abspath(args.bashy)
     args.vendor_comm = args.vendor_comm or [args.tool or "claude"]

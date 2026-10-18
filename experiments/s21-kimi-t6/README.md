@@ -1,47 +1,50 @@
-# Sprint 446 / story 2140: Kimi t6 preflight
+# Sprint 446 / Story 2140: Kimi t6 script versus prose
 
 Base: published agent-bench `a2f8b5a`. Holder: `codex-gpt6-sol`.
-Task and grader are the unchanged `skill-uptake/t6-pdf-fact` pair.
+Task and grader: unchanged `skill-uptake/t6-pdf-fact` fixture and grader.
 
-## Implemented offline
+## Scope and corrected run limit
 
-- `SKILL=script` now commits a t6 command recipe in the isolated workspace's
-  `AGENTS.md`: `bashy lens -t md invoice.pdf`. It contains no answer and no
-  prose skill export. `SKILL=on` exports Bashy's prose skill through ycode's
-  declared project integration. The CLI invocation selects the same task in
-  both arms.
-- The arm evidence copier retains ycode's isolated event log and payloads.
-  Receipt parsing counts `llm.requested` events, including requests without a
-  committed turn, and reads exact token fields from the committed assistant
-  messages. Mixed sessions, missing counts, and a request count other than one
-  fail closed. The guard accepts a fresh measured USD balance row for Kimi but
-  refuses a ycode launch until a pre-request hard cap is verified.
-- Focused zero-model unit tests and the 10-task skill-uptake selfcheck pass.
-  No Bashy production code, defaults, model registry, or vendor config changed.
+`SKILL=script` places the t6 Bashy command recipe in the isolated workspace's
+`AGENTS.md`; `SKILL=on` exports the prose skill. Neither changes Bashy defaults.
+The guarded driver reads the Kimi balance before and after an arm and extracts
+ycode request events and exact assistant token usage from the isolated HOME.
+Its preflight verifies the fleet model binding and the native ycode route's
+USD 3 budget. Each arm has `BUDGET=100`, `QUIET=20`, `ATTEMPTS=1`, a three-minute
+CLI wall limit, and its own HOME and ycode data directory.
 
-## Exact blocker and limits
+The conductor's later correction superseded the initial one-provider-request
+and USD 0.50 hard ceiling: one bounded CLI invocation per profile, native
+USD 3 budget per arm, with internal requests counted from ycode's event log.
+The correction did not authorize a rerun after a guard failure.
 
-`quota-before.json` records a fresh measured Kimi USD balance of **19.04183**.
-The balance is an available-funds reading, not a per-request cost bound. The
-active `bashy ycode --yolo config show` profile permits **4,000 model
-invocations**, a **USD 3 route budget**, and up to **3 transport retry
-attempts**. The existing `bashy chat`/DAG path does not prove a hard
-one-provider-request limit or a USD 0.50 total ceiling. A wall timeout and a
-post-run receipt cannot enforce either limit before charging. Fleet auth is
-also not established by a balance probe alone. `guarded_live_arm.py` refuses
-ycode before launch for this reason.
+## Gate and attempted script arm
 
-S10 Claude run #12 remained `working` at the last status check. To preserve
-its exclusive window, **no Kimi arm was launched**. Kimi vendor requests: **0**;
-Kimi spend in this attempt: **USD 0**; script score: **unmeasured**; prose
-score: **unmeasured**; token usage: **unmeasured**. The allowed ceiling remains
-**USD 0.50 total**, at most one script/prose pair and one request per arm, with
-no retries. The required before/after balance, separate live arm HOMEs and
-live real-HOME deny canary have no post-request evidence because no request
-was made; the earlier AGY zero-model canary is recorded in
-`experiments/s21-agy-t6/guard-summary.json` and is not Kimi attestation.
+S10 Claude run #12 was terminal before the Kimi attempt. `bashy model verify
+kimi-k2.6 --json` returned `ok` with Moonshot vault-key authentication.
+`bashy model quota --provider kimi --json` returned a fresh measured balance
+of USD **19.04183**. The zero-model real-HOME canary passed: isolated state was
+created, the real HOME was unchanged, and the deny guard was live. Focused
+zero-model tests passed (39 tests).
 
-Resume only after #12 is terminal and a verifiable, pre-request ycode
-one-call and USD 0.50 cap exists; then rerun the isolation canary and take a
-new balance snapshot before each arm. Do not infer a format default from this
-zero-request attempt.
+One `SKILL=script` CLI invocation was attempted. It delivered the task, then
+exited before a scored result. The guard blocked a Go process attempting to
+create a file in the real-HOME Go build cache. The process watcher also saw
+unguarded Bashy ancestors, so containment could not be attested. The script
+arm report was **UNSCORED** and its isolated ycode event log recorded **zero
+provider requests**. No prose arm was launched, and no retry was made.
+
+`attempt-summary.json` records the exact failed checks and negative-control
+results. Balance before and after: **USD 19.04183**, delta **USD 0.00**.
+Attributable token usage: **none**; script score: **unmeasured**; prose score:
+**unmeasured**. The guard was effective (both decoy and real-HOME probes were
+killed before and after the arm), and real-HOME fingerprints remained unchanged.
+This run supports no skill format decision. Raw arm HOME and credential-bearing
+records were discarded; only the summary is committed.
+
+## Limit
+
+The attempted arm reached a real-HOME write-deny violation before any provider
+request. A future run needs the Go cache redirected into the isolated HOME and
+must distinguish the guarded ycode process from unguarded harness ancestors in
+the containment check. Neither change was used to rerun this pair.
