@@ -57,8 +57,18 @@ def concurrent_runs(ps_text: str, own: set[int]) -> list[str]:
 
 
 def own_pids() -> set[int]:
-    pids, p = {os.getpid()}, os.getppid()
-    pids.add(p)
+    # Agent shells carry the entire invocation in their command line. Exclude
+    # our full ancestry so BUSY_RE only catches a separate live bench run.
+    rows = subprocess.run(["/bin/ps", "-axo", "pid=,ppid="], capture_output=True, text=True).stdout
+    parents = {}
+    for line in rows.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and all(x.isdigit() for x in fields):
+            parents[int(fields[0])] = int(fields[1])
+    pids, p = set(), os.getpid()
+    while p and p not in pids:
+        pids.add(p)
+        p = parents.get(p, 0)
     return pids
 
 
@@ -86,6 +96,10 @@ def pair(args, run_arm=None) -> dict:
         argv = ["--agent", args.agent, "--pack", args.pack, "--task", args.task, "--skill", arm,
                 "--evidence", os.path.join(ev, arm), "--bashy", args.bashy, "--budget", str(args.budget),
                 "--quiet", str(args.quiet), "--model", args.model]
+        if args.tool:
+            argv += ["--tool", args.tool]
+        for comm in args.vendor_comm:
+            argv += ["--vendor-comm", comm]
         rc = run_arm(argv)
         try:
             rep = json.load(open(os.path.join(ev, arm, "report.json")))
@@ -93,7 +107,10 @@ def pair(args, run_arm=None) -> dict:
             rep = {"verdict": "UNSCORED", "failures": ["no report.json"]}
         out["arms"].append({"skill": arm, "rc": rc, **{k: rep.get(k) for k in (
             "verdict", "score", "failures", "requests", "usage_total", "quota_before", "quota_after",
-            "quota_before_read", "quota_after_read", "wall_s")}})
+            "quota_before_read", "quota_after_read", "balance_before_usd", "balance_after_usd",
+            "balance_delta_usd", "native_route_budget_usd", "skill_preflight", "workspace_skill",
+            "negative_control_before", "negative_control_after", "canary_before",
+            "real_home_changed", "sandbox_denials", "wall_s")}})
         if rc != 0:
             stop = f"{arm} rc={rc} verdict={rep.get('verdict')}"
     out["verdict"] = "PAIRED" if all(a.get("rc") == 0 for a in out["arms"]) else "UNSCORED"
@@ -112,11 +129,13 @@ def main(argv=None) -> int:
     ap.add_argument("--budget", type=int, default=100)
     ap.add_argument("--quiet", type=int, default=20)
     ap.add_argument("--order", default="off,on")
+    ap.add_argument("--tool")
+    ap.add_argument("--vendor-comm", action="append", default=[])
     args = ap.parse_args(argv)
     args.bashy = os.path.abspath(args.bashy)
     args.order = args.order.split(",")
-    if sorted(args.order) != ["off", "on"]:
-        ap.error("--order must name off and on once each")
+    if args.order not in (["off", "on"], ["script", "on"]):
+        ap.error("--order must be off,on or script,on")
     out = pair(args)
     with open(os.path.join(os.path.abspath(args.evidence), "pair.json"), "w") as fh:
         json.dump(out, fh, indent=1)

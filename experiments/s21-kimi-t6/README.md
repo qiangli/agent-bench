@@ -77,3 +77,27 @@ an offline regression fix, but this arm was **not rerun**. Because the driver
 reported a guard failure, no prose arm was launched. The pair remains open
 and cannot support a format comparison. `retry-summary.json` is the sanitized
 receipt; raw arm data stays outside the repository.
+
+## Story 9c30598a1921 attempt on published 4559a82
+
+The focused zero-model gate passed (43 tests). The pair driver now accepts
+`script,on`, forwards the ycode process selector to each guarded arm, and
+records balance and selector evidence. Its concurrency check also excludes the
+driver's parent shells, whose command lines may contain the driver name. An
+initial pair dispatch stopped before either arm because of that false match;
+it made no vendor call.
+
+The subsequent single `script,on` dispatch reached the script arm's isolated
+setup, then the driver received SIGTERM (exit 143) before writing its report.
+The zero-model real-HOME canary passed. A fresh measured Kimi balance was USD
+19.03782 before setup. The interrupted isolated tree had no ycode event log,
+no request marker, no scored result, and no `AGENTS.md` script selector in the
+workspace. Because the driver did not finish its negative controls, receipt
+capture, or after balance check, the guard verdict, score, and token usage are
+**unmeasured**. A separate fresh balance read later returned USD 19.03179;
+the observed USD 0.00603 change cannot be attributed to this arm.
+
+The prose arm was not launched. No retry was made. The earlier run14 score of
+1 remains unverified, the canonical fallback stays in place, and S21 remains
+open. `interrupted-summary.json` is the sanitized record; raw isolated HOME
+and workspace artifacts were not added to the repository.

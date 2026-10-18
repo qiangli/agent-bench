@@ -291,7 +291,8 @@ class PairTest(unittest.TestCase):
     def args(self, tmp):
         import types
         return types.SimpleNamespace(agent="a", pack="skill-uptake", task="t6-pdf-fact", model="m", budget=100,
-                                     quiet=20, bashy="/x/bashy", evidence=tmp, order=["off", "on"])
+                                     quiet=20, bashy="/x/bashy", evidence=tmp, order=["off", "on"],
+                                     tool=None, vendor_comm=[])
 
     def fake(self, rcs, calls):
         def run(argv):
@@ -324,6 +325,19 @@ class PairTest(unittest.TestCase):
             strip = [[v for i, v in enumerate(c) if i == 0 or c[i - 1] not in ("--skill", "--evidence")] for c in calls]
             self.assertEqual(strip[0], strip[1])
             self.assertTrue(out["grader_sha256"])
+
+    def test_script_pair_passes_ycode_guard_options(self):
+        import guarded_pair as gp
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            args = self.args(tmp)
+            args.order = ["script", "on"]
+            args.tool = "ycode"
+            args.vendor_comm = ["bashy"]
+            calls = []
+            out = gp.pair(args, self.fake({"script": 0, "on": 0}, calls))
+            self.assertEqual(out["verdict"], "PAIRED")
+            self.assertEqual([c[c.index("--skill") + 1] for c in calls], ["script", "on"])
+            self.assertTrue(all(c[-4:] == ["--tool", "ycode", "--vendor-comm", "bashy"] for c in calls))
 
     def test_concurrent_runner_detected(self):
         import guarded_pair as gp

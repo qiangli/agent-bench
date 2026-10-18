@@ -1,0 +1,31 @@
+{
+  "story": "9c30598a1921",
+  "base_commit": "4559a82eb783fdd8646722806cd51b037131e564",
+  "verdict": "UNMEASURED_STOPPED_BEFORE_PROSE",
+  "pair_order": ["script", "on"],
+  "script": {
+    "driver_exit_code": 143,
+    "driver_report": "absent after external termination",
+    "task_score": "unmeasured",
+    "guard_verdict": "incomplete",
+    "zero_model_real_home_canary": "PASS",
+    "observed_event_logs": 0,
+    "observed_provider_requests": 0,
+    "attributable_tokens": "unmeasured",
+    "selector_evidence": "preflight/actual workspace AGENTS.md absent at interruption",
+    "balance_before_usd": 19.03782,
+    "balance_before_observed_at": "2026-10-18T16:18:29.935875-07:00",
+    "balance_after_manual_usd": 19.03179,
+    "balance_after_manual_observed_at": "2026-10-18T16:21:13.418261-07:00",
+    "observed_balance_change_usd": 0.00603,
+    "balance_change_attributable_to_arm": false
+  },
+  "prose": {
+    "cli_invocations": 0,
+    "task_score": "unmeasured",
+    "guard_verdict": "not run",
+    "balance_before_usd": "not read",
+    "balance_after_usd": "not read"
+  },
+  "decision": "Keep canonical fallback and S21 open; no format comparison or default change."
+}
