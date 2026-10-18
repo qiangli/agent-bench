@@ -13,7 +13,9 @@ def check(ws):
     p = Path(ws) / "FACT.md"
     if not p.is_file(): return False, "FACT.md missing"
     text = p.read_text(encoding="utf-8")
-    ok = bool(re.search(r"(?m)^# .+", text)) and bool(re.search(r"Due date:\s*\*?\*?2026-11-14", text, re.I))
+    heading = bool(re.search(r"(?m)^# .+", text))
+    due_date = bool(re.search(r"(?m)^\s*(?:Due date:\s*)?(?:\*\*)?2026-11-14(?:\*\*)?\s*$", text, re.I))
+    ok = heading and due_date
     return ok, "PDF due date correct" if ok else "wrong PDF fact"
 PATTERN = r"^(?:bashy )?lens -t md (?:\S*/)?invoice\.pdf(?:\s|$)"
 

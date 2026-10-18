@@ -75,11 +75,12 @@ def observed_commands(ws: str) -> list[str]:
     TASK.md, an answer file, or a commit message.
     """
     path = Path(ws)
-    logs = _trusted_logs() or [path / name for name in (
+    trusted = _trusted_logs()
+    logs = trusted or [path / name for name in (
         "transcript.log", "transcript.jsonl", "session.log", ".session.log",
         ".transcript", "history.log",
     )]
-    if not _trusted_logs():
+    if not trusted:
         logs += [path.parent / f"{path.name}{suffix}" for suffix in (
             ".session.log", ".screen.log",
         )]
@@ -88,6 +89,16 @@ def observed_commands(ws: str) -> list[str]:
         if not log.is_file():
             continue
         for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
+            if log.name.endswith(".screen.log"):
+                # AGY's terminal UI records completed tool calls as
+                # "● Ran (command)" amid ANSI cursor movement. A mere
+                # "Running" line or prose mentioning a command is not proof.
+                clean = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", line)
+                for match in re.finditer(r"(?:^|\r)● Ran \(([^)\r\n]+)\)", clean):
+                    command = match.group(1).strip()
+                    if re.match(r"^(?:bashy|lens)\s+", command):
+                        commands.append(command)
+                continue
             line = line.strip()
             if line.startswith("$ "):
                 line = line[2:]

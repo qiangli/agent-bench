@@ -45,7 +45,10 @@ The benchmark harness can launch the task without the bashy skill exported (e.g.
 - Reference solutions score 2 points (`discovery: 1`), giving a whole-pack score of 10.0/10 (PASS).
 
 Local audit: 10 untouched fixtures score 0, 10 correct improvisations score 1,
-and 10 references score 2. The live vendor matrix remains unrun; these local
-checks are not vendor performance measurements. With the DAG default `K=3`,
-the remaining live matrix is 10 tasks × 3 runs × 2 skill modes (on/off) per
-selected vendor, or 60 runs per vendor. No vendor scores are recorded here.
+and 10 references score 2. A bounded live t6 smoke ran once in each skill mode
+for AGY Gemini 3.8 Flash. Regrading the saved pair gives 1 point skill-off and
+2 points skill-on; both results are correct, and only skill-on has an observed
+completed lens command. These two runs do not establish a full vendor score.
+With the DAG default `K=3`, the full matrix is 10 tasks × 3 runs × 2 skill
+modes, or 60 runs per selected vendor. The AGY pair leaves 58 runs for that
+vendor; each other selected vendor still needs 60.
