@@ -1,0 +1,22 @@
+{
+  "verdict": "PASS",
+  "guard": "sandbox-exec deny file-write* + SIGKILL (decoy verified)",
+  "protected_homes": [
+    "/Users/qiangli"
+  ],
+  "real_home_changed": [],
+  "host_concurrent_writes": [
+    {
+      "path": "/Users/qiangli/.bashy/coord/claims.lock",
+      "holders": [
+        "coord-claims:76133"
+      ]
+    }
+  ],
+  "sandbox_denials": [],
+  "arm_state": [
+    ".bashy/room/timeline.jsonl",
+    ".bashy/exec"
+  ],
+  "failures": []
+}

@@ -1,0 +1,19 @@
+{
+  "checked_at": "2026-10-18T22:37:28.691587+00:00",
+  "command": "bashy model quota --json",
+  "items": [
+    {
+      "account": "google-ai-pro",
+      "label": "agy",
+      "configured": true,
+      "provider": "gemini",
+      "plan": "google-ai-pro",
+      "lane": "subscription",
+      "status": "unmeasured",
+      "headroom": null,
+      "stale": false,
+      "classification": ""
+    }
+  ],
+  "gate": "REFUSED: no measured 5h quota row; no measured week quota row"
+}
