@@ -126,5 +126,103 @@ class WrapperParsingTest(unittest.TestCase):
         self.assertIn('(deny process-exec (literal "/usr/bin/security"))', p)
 
 
+def fake_bashy(tmp, refresh_rc, refresh_stale, cached_stale):
+    def doc(stale):
+        return json.dumps({"items": [{"label": "claude", "window": w, "status": "ok", "used_percent": 5,
+                                      "stale": stale} for w in ("5h", "week")]})
+    p = os.path.join(tmp, "bashy")
+    Path(p).write_text("#!/bin/sh\n"
+                       f"case \"$*\" in *--refresh*) echo '{doc(refresh_stale)}'; echo boom >&2; exit {refresh_rc};; esac\n"
+                       f"echo '{doc(cached_stale)}'\n")
+    os.chmod(p, 0o755)
+    return p
+
+
+class QuotaReadTest(unittest.TestCase):
+    def test_refresh_ok(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            rows, _, meta = g.quota(fake_bashy(tmp, 0, False, True), "claude")
+            self.assertEqual(meta, {"source": "refresh"})
+            self.assertIsNone(g.quota_ok(rows, 80, 90))
+
+    def test_refresh_failure_recorded_nonstale_fallback_accepted(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            rows, _, meta = g.quota(fake_bashy(tmp, 1, False, False), "claude")
+            self.assertEqual(meta["source"], "cached-fallback")
+            self.assertIn("rc=1", meta["refresh_error"])
+            self.assertIn("boom", meta["refresh_error"])
+            self.assertTrue(meta["fallback_nonstale"])
+            self.assertIsNone(g.quota_ok(rows, 80, 90))
+
+    def test_stale_fallback_refused(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            rows, _, meta = g.quota(fake_bashy(tmp, 0, True, True), "claude")
+            self.assertIn("stale=['5h', 'week']", meta["refresh_error"])
+            self.assertFalse(meta["fallback_nonstale"])
+            self.assertIn("not ok", g.quota_ok(rows, 80, 90))
+
+
+class ProcEnvTest(unittest.TestCase):
+    def test_reads_only_named_vars_of_a_live_process(self):
+        import subprocess
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            # Not /bin/sleep: ps cannot read a platform binary's environment.
+            p = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(5)"],
+                                 env={"HOME": tmp, "SECRET": "s", "PATH": "/bin"})
+            try:
+                import time
+                time.sleep(0.5)
+                env = g.proc_env(p.pid, ("HOME", "CLAUDE_CONFIG_DIR"))
+            finally:
+                p.kill()
+                p.wait()
+            self.assertEqual(env, {"HOME": tmp, "CLAUDE_CONFIG_DIR": None})
+
+
+class PairTest(unittest.TestCase):
+    def args(self, tmp):
+        import types
+        return types.SimpleNamespace(agent="a", pack="skill-uptake", task="t6-pdf-fact", model="m", budget=100,
+                                     quiet=20, bashy="/x/bashy", evidence=tmp, order=["off", "on"])
+
+    def fake(self, rcs, calls):
+        def run(argv):
+            arm = argv[argv.index("--skill") + 1]
+            ev = argv[argv.index("--evidence") + 1]
+            calls.append(argv)
+            os.makedirs(ev, exist_ok=True)
+            rc = rcs[arm]
+            Path(ev, "report.json").write_text(json.dumps({"verdict": "PASS" if rc == 0 else "UNSCORED",
+                                                           "failures": [] if rc == 0 else ["no attributable usage"]}))
+            return rc
+        return run
+
+    def test_first_arm_failure_stops_before_second_request(self):
+        import guarded_pair as gp
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            calls = []
+            out = gp.pair(self.args(tmp), self.fake({"off": 1, "on": 0}, calls))
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(out["verdict"], "UNSCORED")
+            self.assertEqual(out["arms"][1]["requests"], 0)
+            self.assertIn("not run", out["arms"][1]["why"])
+
+    def test_same_task_model_budget_both_arms(self):
+        import guarded_pair as gp
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            calls = []
+            out = gp.pair(self.args(tmp), self.fake({"off": 0, "on": 0}, calls))
+            self.assertEqual(out["verdict"], "PAIRED")
+            strip = [[v for i, v in enumerate(c) if i == 0 or c[i - 1] not in ("--skill", "--evidence")] for c in calls]
+            self.assertEqual(strip[0], strip[1])
+            self.assertTrue(out["grader_sha256"])
+
+    def test_concurrent_runner_detected(self):
+        import guarded_pair as gp
+        ps = "10 python3 scripts/guarded_live_arm.py --agent x\n11 /bin/zsh\n12 bashy dag run AGENT=y\n13 vim\n"
+        self.assertEqual(len(gp.concurrent_runs(ps, {13})), 2)
+        self.assertEqual(gp.concurrent_runs(ps, {10, 12}), [])
+
+
 if __name__ == "__main__":
     unittest.main()

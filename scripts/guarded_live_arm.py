@@ -85,14 +85,37 @@ def negative_controls(sb: str, decoy: str, home: str) -> dict:
     return out
 
 
-def quota(bashy: str, label: str) -> tuple[dict, str]:
-    r = subprocess.run([bashy, "model", "quota", "--json"], capture_output=True, text=True, timeout=60)
-    raw = r.stdout
+def _quota_rows(raw: str, label: str) -> dict | None:
     try:
         items = json.loads(raw)["items"]
-    except (ValueError, KeyError):
-        return {}, raw
-    return {i["window"]: i for i in items if i.get("label") == label and i.get("window")}, raw
+    except (ValueError, KeyError, TypeError):
+        return None
+    return {i["window"]: i for i in items if i.get("label") == label and i.get("window")}
+
+
+def quota(bashy: str, label: str) -> tuple[dict, str, dict]:
+    """(rows by window, raw JSON, how they were read). A `--refresh` read is
+    tried first; if it fails, times out, or leaves a row stale, that is
+    recorded as refresh_error and the cached rows are the fallback, which
+    quota_ok still accepts only when measured and NOT stale."""
+    meta: dict = {}
+    try:
+        r = subprocess.run([bashy, "model", "quota", "--refresh", "--json", "--provider", label],
+                           capture_output=True, text=True, timeout=60)
+        rows = _quota_rows(r.stdout, label)
+        if r.returncode == 0 and rows and not any(v.get("stale") for v in rows.values()):
+            meta["source"] = "refresh"
+            return rows, r.stdout, meta
+        meta["refresh_error"] = (f"rc={r.returncode} rows={sorted(rows or {})} "
+                                 f"stale={sorted(w for w, v in (rows or {}).items() if v.get('stale'))} "
+                                 f"stderr={r.stderr.strip()[:200]!r}")
+    except subprocess.TimeoutExpired:
+        meta["refresh_error"] = "timeout after 60s"
+    r = subprocess.run([bashy, "model", "quota", "--json"], capture_output=True, text=True, timeout=60)
+    meta["source"] = "cached-fallback"
+    rows = _quota_rows(r.stdout, label)
+    meta["fallback_nonstale"] = bool(rows) and not any(v.get("stale") for v in rows.values())
+    return rows or {}, r.stdout, meta
 
 
 def quota_ok(rows: dict, max_5h: int, max_week: int) -> str | None:
@@ -105,6 +128,54 @@ def quota_ok(rows: dict, max_5h: int, max_week: int) -> str | None:
         if row["used_percent"] >= cap:
             return f"{window} quota {row['used_percent']}% >= cap {cap}%"
     return None
+
+
+SKILL_MD = ".claude/skills/bashy/SKILL.md"  # skill_arm.PROJECT_SKILL_ROOTS["claude"]
+
+
+def _sha(path: str) -> str | None:
+    import hashlib
+    return hashlib.sha256(open(path, "rb").read()).hexdigest() if os.path.isfile(path) else None
+
+
+def skill_preflight(bashy: str, sb: str, root: str, tool: str, arm: str) -> dict:
+    """Zero-model rehearsal of the DAG's skill export under the same guard and a
+    tool-less isolated env: the on arm must produce the SKILL.md the vendor
+    reads, the off arm must not. Returns its sha so the real arm can be matched."""
+    scratch = os.path.join(root, "skill-pre")
+    ws, pre = os.path.join(scratch, "ws"), os.path.join(scratch, "pre")
+    os.makedirs(ws)
+    subprocess.run(["/usr/bin/git", "-C", ws, "init", "-q", "-b", "main"], check=True)
+    open(os.path.join(ws, "README"), "w").write("skill preflight\n")
+    subprocess.run(["/usr/bin/git", "-C", ws, "add", "-A"], check=True)
+    subprocess.run(["/usr/bin/git", "-C", ws, "-c", "user.name=bench", "-c", "user.email=bench@example.invalid",
+                    "commit", "-qm", "fixture"], check=True)
+    prep = subprocess.run([sys.executable, os.path.join(REPO, "scripts", "arm_home.py"), "prepare",
+                           "--arm-dir", pre, "--tool", "none"], capture_output=True, text=True, timeout=120)
+    out: dict = {"arm": arm, "prepare_rc": prep.returncode}
+    if prep.returncode:
+        out["ok"], out["error"] = False, prep.stderr.strip()[:300]
+        return out
+    env = dict(os.environ, PATH=os.path.dirname(bashy) + os.pathsep + os.environ.get("PATH", ""))
+    env.update(l.split("=", 1) for l in prep.stdout.splitlines() if "=" in l)
+    r = subprocess.run(["sandbox-exec", "-f", sb, sys.executable, os.path.join(REPO, "scripts", "skill_arm.py"),
+                        "--workspace", ws, "--tool", tool, "--arm", arm],
+                       env=env, capture_output=True, text=True, timeout=120)
+    sha = _sha(os.path.join(ws, SKILL_MD))
+    out.update(rc=r.returncode, killed=r.returncode in KILLED, skill_md=sha is not None, skill_sha256=sha,
+               stderr=r.stderr.strip()[:300])
+    out["ok"] = r.returncode == 0 and (sha is not None) == (arm == "on")
+    shutil.rmtree(scratch, ignore_errors=True)
+    return out
+
+
+def zero_model_canary(bashy: str, ev: str) -> dict:
+    """real_home_canary.py in-process (benchbot-dry, no vendor), before the request."""
+    rep = canary.run(bashy, None)
+    with open(os.path.join(ev, "canary.json"), "w") as fh:
+        json.dump(rep, fh, indent=1)
+    return {"verdict": rep.get("verdict"), "failures": rep.get("failures", []),
+            "sandbox_denials": rep.get("sandbox_denials", []), "known_leaks": rep.get("known_leaks", {})}
 
 
 def keychain_meta() -> list[str]:
@@ -141,6 +212,17 @@ def sandboxed(pid: int) -> int:
     return _sandbox_check(pid, None, 0)
 
 
+def proc_env(pid: int, keys: tuple[str, ...]) -> dict:
+    """Only the named (path) variables of a live process's environment."""
+    r = subprocess.run(["/bin/ps", "-E", "-ww", "-o", "command=", "-p", str(pid)], capture_output=True, text=True)
+    out = {k: None for k in keys}
+    for k in keys:
+        m = re.search(rf"(?:^|\s){k}=(\S+)", r.stdout)
+        if m:
+            out[k] = m.group(1)
+    return out
+
+
 class VendorWatch(canary.Tree):
     """The runner's process tree, plus a sandbox_check of every vendor pid."""
 
@@ -166,7 +248,8 @@ class VendorWatch(canary.Tree):
                         grew = True
             for pid, ppid, comm in rows:
                 if pid in self.pids and os.path.basename(comm) in self.comms and pid not in self.vendor:
-                    self.vendor[pid] = {"pid": pid, "ppid": ppid, "comm": comm, "sandboxed": sandboxed(pid)}
+                    self.vendor[pid] = {"pid": pid, "ppid": ppid, "comm": comm, "sandboxed": sandboxed(pid),
+                                        **proc_env(pid, ("HOME", "CLAUDE_CONFIG_DIR"))}
 
 
 def tree_denials(log_text: str, pids: set[int], homes: list[str]) -> tuple[list[str], list[str]]:
@@ -251,7 +334,7 @@ def run(args) -> int:
     model = args.model
     report["tool"], report["model"] = tool, model
 
-    rows, raw = quota(args.bashy, args.quota_label or tool)
+    rows, raw, report["quota_before_read"] = quota(args.bashy, args.quota_label or tool)
     open(os.path.join(ev, "quota.before.json"), "w").write(raw)
     report["quota_before"] = {w: r.get("used_percent") for w, r in rows.items()}
     why = quota_ok(rows, args.max_5h, args.max_week)
@@ -271,6 +354,15 @@ def run(args) -> int:
         report["negative_control_before"] = nc = negative_controls(sb, decoy, homes[0])
         if not nc["ok"]:
             report["failures"].append(f"guard not live before the arm: {nc}")
+            return save(2)
+        if not args.skip_canary:
+            report["canary_before"] = cb = zero_model_canary(args.bashy, ev)
+            if cb["verdict"] != "PASS":
+                report["failures"].append(f"zero-model real-HOME canary failed before the request: {cb['failures']}")
+                return save(2)
+        report["skill_preflight"] = sp = skill_preflight(args.bashy, sb, root, tool, args.skill)
+        if not sp["ok"]:
+            report["failures"].append(f"skill {args.skill} export preflight failed: {sp}")
             return save(2)
 
         runs = os.path.join(root, "runs")
@@ -343,6 +435,10 @@ def run(args) -> int:
             report["failures"].append(f"no {sorted(watch.comms)} process seen under the runner (not launched?)")
         elif not all(v["sandboxed"] == 1 for v in watch.vendor.values()):
             report["failures"].append(f"vendor process outside the guard: {report['vendor_processes']}")
+        iso = [v for v in watch.vendor.values()
+               if not all(v.get(k) and os.path.realpath(v[k]).startswith(root + "/") for k in ("HOME", "CLAUDE_CONFIG_DIR"))]
+        if iso:
+            report["failures"].append(f"vendor process without an isolated HOME/CLAUDE_CONFIG_DIR: {iso}")
 
         # The DAG record: $RUNS/$AGENT/$PACK-$TASK/1 (+ .session.log/.screen.log/.arm).
         rec = os.path.join(runs, args.agent, f"{args.pack}-{args.task}", "1")
@@ -366,6 +462,13 @@ def run(args) -> int:
             row = json.loads(lines[-1]) if lines else None
         report["result"] = row
 
+        # The skill the vendor actually saw: the graded workspace copy.
+        got = _sha(os.path.join(ev, "workspace", SKILL_MD))
+        report["workspace_skill"] = {"skill_md": got is not None, "skill_sha256": got,
+                                     "matches_preflight": got == sp.get("skill_sha256")}
+        if os.path.isdir(os.path.join(ev, "workspace")) and ((got is not None) != (args.skill == "on")
+                                                              or got != sp.get("skill_sha256")):
+            report["failures"].append(f"arm workspace skill does not match SKILL={args.skill}: {report['workspace_skill']}")
         session = open(rec + ".session.log", errors="replace").read() if os.path.isfile(rec + ".session.log") else ""
         screen = open(rec + ".screen.log", errors="replace").read() if os.path.isfile(rec + ".screen.log") else ""
         report["task_delivered"] = "instruction delivered" in session
@@ -399,9 +502,11 @@ def run(args) -> int:
             "statusline": sorted(set(re.findall(r"\| ?5h ?\d+%", plain))),
             "tokens": sorted(set(re.findall(r"[↓↑] ?\d+ ?tokens", plain)))}
 
-        rows, raw = quota(args.bashy, args.quota_label or tool)
+        rows, raw, report["quota_after_read"] = quota(args.bashy, args.quota_label or tool)
         open(os.path.join(ev, "quota.after.json"), "w").write(raw)
         report["quota_after"] = {w: r.get("used_percent") for w, r in rows.items()}
+        if quota_ok(rows, 101, 101):
+            report["failures"].append(f"quota after not measured/nonstale: {quota_ok(rows, 101, 101)}")
 
         scored = bool(row) and "result_ok" in row and not row.get("void")
         if scored:
@@ -430,6 +535,7 @@ def main(argv=None) -> int:
     ap.add_argument("--quiet", type=int, default=20)
     ap.add_argument("--max-5h", type=int, default=80)
     ap.add_argument("--max-week", type=int, default=90)
+    ap.add_argument("--skip-canary", action="store_true", help="tests only: skip the zero-model canary")
     args = ap.parse_args(argv)
     args.bashy = os.path.abspath(args.bashy)
     args.vendor_comm = args.vendor_comm or [args.tool or "claude"]
