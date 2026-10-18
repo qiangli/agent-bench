@@ -1,0 +1,56 @@
+{
+ "verdict": "PASS",
+ "guarded": true,
+ "claude": "2.1.283 (Claude Code)",
+ "arms": [
+  {
+   "arm": "off",
+   "skill_arm_rc": 0,
+   "workspace_skill": false,
+   "claude_rc": 1,
+   "requests_captured": 1,
+   "listing_skills": 8,
+   "skill_listed": false,
+   "description_listed": false,
+   "transcripts": [
+    ".claude/projects/-private-tmp-s11probe-ekzcws6v-ws-off-819ytrmg/f7754818-019c-4182-8612-f90de3581f7e.jsonl"
+   ]
+  },
+  {
+   "arm": "on",
+   "skill_arm_rc": 0,
+   "workspace_skill": true,
+   "claude_rc": 1,
+   "requests_captured": 1,
+   "listing_skills": 9,
+   "skill_listed": true,
+   "description_listed": false,
+   "transcripts": [
+    ".claude/projects/-private-tmp-s11probe-ekzcws6v-ws-on-k1mgcng3/fd9ae859-e7bf-4d51-ad99-55f212357e80.jsonl"
+   ]
+  }
+ ],
+ "persistence": {
+  "verdict": "PASS",
+  "sessions": [
+   {
+    "arm_env": "s10",
+    "CLAUDE_CODE_CHILD_SESSION": "1",
+    "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE": "<unset>",
+    "tui_up": true,
+    "warning_shown": true,
+    "requests_captured": 2,
+    "transcripts": 0
+   },
+   {
+    "arm_env": "current",
+    "CLAUDE_CODE_CHILD_SESSION": "",
+    "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE": "1",
+    "tui_up": true,
+    "warning_shown": false,
+    "requests_captured": 2,
+    "transcripts": 1
+   }
+  ]
+ }
+}
