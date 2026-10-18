@@ -254,7 +254,7 @@ for i in $(seq 1 "$K"); do
     cp -R "$ws" "$rec"; rm -rf "$ws" "$ws.bashy-home"
     exit 3
   fi
-  g=$(python3 scripts/pack_runner.py grade --pack "$PACK" --task "$TASK" --workspace "$ws" --fixture "$pack/fixture" 2>&1 | tail -1)
+  g=$(BENCH_SESSION_LOG="$rec.session.log" BENCH_SCREEN_LOG="$rec.screen.log" python3 scripts/pack_runner.py grade --pack "$PACK" --task "$TASK" --workspace "$ws" --fixture "$pack/fixture" 2>&1 | tail -1)
   # Reading the answer key is a hard-rule FAIL whatever the grade. The dry agent
   # is exempt — it is handed the reference solution — but a planted read holds
   # the rule to it too, which is how the rule is covered by the dry gate.

@@ -1,0 +1,8 @@
+{
+  "service": {
+    "name": "relay",
+    "retries": 2,
+    "enabled": true
+  },
+  "region": "us-west-2"
+}

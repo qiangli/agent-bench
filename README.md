@@ -32,7 +32,7 @@ packs/<pack>/<task>/
 | `manager` | Manager certificate: conductor tasks (decompose, estimate, route, false-done detection, integration, dominance, blame, scorecard, replan, checkpoint) | 10 conductor tasks | PASS + score ≥ 6.0/10 (worst of K runs, no hard-rule breaks) | Self-checked (reference 10.0; naive L3-style 0.5); calibration run pending |
 | `judge` | Judge calibration certificate: synthetic blind cases (10 ADRs, 10 code changes) targeting subtle operational and concurrency behavior | 20 cases (10 ADR, 10 code) | Agreement ≥ 18/20 (90%) | Self-checked (reference passes; keyword, fixed-tag and trivial strategies fail); calibration run pending |
 | `l5` | Frontier certificate pack: frontier-only tasks covering remaining harness gaps | In progress | PASS + score ≥ 6.0 (planned) | In progress (being added) |
-| `skill-uptake` | Skill uptake certificate: measures whether agents consult exported skills/help or improvise on agentic shell verbs | 5 tasks | PASS + score ≥ 6.0/10 (worst of K runs, no hard-rule breaks) | Self-checked; calibration run pending |
+| `skill-uptake` | Skill uptake certificate: measures whether agents consult exported skills/help or improvise on agentic shell verbs | 10 tasks | PASS + score ≥ 6.0/10 (worst of K runs, no hard-rule breaks) | Self-checked; live calibration pending |
 
 A task in a certificate pack is only kept if it **discriminates**: known agents
 at or above the level pass it and agents below do not. Tasks every agent passes
@@ -110,7 +110,7 @@ Each pack's `selfcheck.py` exercises the pack locally without network access:
 - `packs/judge/selfcheck.py`: validates that planted reference verdicts pass, while uniform accept/reject, random guessing, keyword-first impressions, and fixed-tag heuristics fail.
 - `packs/manager/selfcheck.py`: validates all 10 tasks in isolated git workspaces, confirming references score 2, untouched fixtures score 0, hard rules trigger on invalid actions, and whole-pack scoring enforces the 6.0 pass line.
 - `packs/review/selfcheck.py`: validates that `CHANGE.diff` reverse-applies cleanly, references pass, untouched fixtures fail, line tolerance (±3) holds, and whole-pack recall ≥ 80% with zero false alarms is enforced.
-- `packs/skill-uptake/selfcheck.py`: validates all 5 tasks in isolated git workspaces, confirming references score 2, untouched fixtures score 0, naive answers score 1 (5.0 pack score fails 6.0 line), and discovery and format use are recorded.
+- `packs/skill-uptake/selfcheck.py`: validates all 10 tasks in isolated git workspaces, confirming references score 2, untouched fixtures score 0, naive answers score 1 (5.0 pack score fails 6.0 line), and discovery and format use are recorded.
 - For `packs/l1` and `packs/l2`, individual task graders can be executed directly against workspace and fixture directories (`python3 packs/<pack>/<task>/grader/grade.py <workspace> <fixture>`).
 
 `bashy dag selfcheck` checks the *harness* rather than a pack: it plants a

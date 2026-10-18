@@ -145,9 +145,15 @@ def validate(pack: str) -> int:
                 subprocess.run([sys.executable, str(reference / "solve.py"), str(work) + ".bashy-home"], check=True)
             else:
                 overlay(reference, work)
-            subprocess.run(["git", "-C", str(work), "add", "-A"], check=True)
-            subprocess.run(["git", "-C", str(work), "-c", "user.name=bench",
-                            "-c", "user.email=bench@example.invalid", "commit", "-q", "--allow-empty", "-m", "reference"], check=True)
+                action = reference / "solve.py"
+                if action.is_file():
+                    subprocess.run([sys.executable, str(action), str(work)], check=True)
+                    (work / "solve.py").unlink(missing_ok=True)
+            # A Git status task needs its staged and worktree changes intact.
+            if not (pack == "skill-uptake" and task == "t10-git-status-json"):
+                subprocess.run(["git", "-C", str(work), "add", "-A"], check=True)
+                subprocess.run(["git", "-C", str(work), "-c", "user.name=bench",
+                                "-c", "user.email=bench@example.invalid", "commit", "-q", "--allow-empty", "-m", "reference"], check=True)
             answer = grade(pack, task, work, fixture)
         shutil.rmtree(str(work) + ".bashy-home", ignore_errors=True)
         # An untouched fixture must not pass.  Some one-shot graders call an

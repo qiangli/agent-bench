@@ -1,0 +1,5 @@
+service:
+  name: relay
+  retries: 5
+  enabled: false
+region: us-west-2

@@ -1,0 +1,2 @@
+$ bashy lens -t listing bundle.zip > listing.jsonl
+$ python3 -c 'import json; from pathlib import Path; rows=[json.loads(x) for x in Path("listing.jsonl").read_text().splitlines()]; item=max((r for r in rows if r["type"] == "file"), key=lambda r:r["size"]); Path("ANSWER.json").write_text(json.dumps({"path":item["path"],"size_bytes":item["size"]})+"\n")'

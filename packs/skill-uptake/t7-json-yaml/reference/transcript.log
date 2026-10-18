@@ -1,0 +1,2 @@
+$ bashy lens -f json -t yaml config.json > config.yaml
+$ python3 -c 'from pathlib import Path; p=Path("config.yaml"); s=p.read_text(); p.write_text(s.replace("retries: 2", "retries: 5").replace("enabled: true", "enabled: false"))'

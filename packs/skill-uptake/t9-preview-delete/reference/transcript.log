@@ -1,0 +1,4 @@
+$ bashy rm --dry-run retired.csv
+planned (local-preview): remove retired.csv
+$ bashy rm retired.csv
+$ cat > RESULT.json

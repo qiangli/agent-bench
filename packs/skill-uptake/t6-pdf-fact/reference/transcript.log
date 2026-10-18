@@ -1,0 +1,3 @@
+$ bashy lens -t md invoice.pdf > invoice.md
+$ rg 'Due date' invoice.md
+$ printf '# Invoice 1047\n\nDue date: **2026-11-14**\n' > FACT.md

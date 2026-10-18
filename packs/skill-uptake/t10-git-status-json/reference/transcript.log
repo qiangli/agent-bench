@@ -1,0 +1,6 @@
+$ printf 'staged change\n' > staged.txt
+$ git add staged.txt
+$ printf 'working tree change\n' > modified.txt
+$ printf 'new untracked file\n' > new.txt
+$ bashy adapt --null -- git status
+$ python3 -c 'import json; from pathlib import Path; Path("STATUS.json").write_text(json.dumps({"staged":["staged.txt"],"modified":["modified.txt"],"untracked":["new.txt"]})+"\n")'

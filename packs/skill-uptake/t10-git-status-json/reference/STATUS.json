@@ -1,0 +1,11 @@
+{
+  "staged": [
+    "staged.txt"
+  ],
+  "modified": [
+    "modified.txt"
+  ],
+  "untracked": [
+    "new.txt"
+  ]
+}
