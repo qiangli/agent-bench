@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """ONE paired skill-uptake measurement: the same agent, task, model, budget and
-grader, SKILL=off then SKILL=on, each arm one vendor request through
+grader, SKILL=off, script, or yaml then SKILL=on, each arm one vendor invocation through
 guarded_live_arm.py (zero-model canary, quota, guard and skill-export
 preflights before the request; quota, score, attributable usage and guard
 evidence after it).
@@ -8,8 +8,7 @@ evidence after it).
 Fail closed between arms: if the first arm refused (a preflight) or failed any
 check (usage capture included), the second is NOT launched and is reported
 UNSCORED (not run). No retries: guarded_live_arm runs the DAG with ATTEMPTS=1.
-Refuses to start while another bench vendor arm is live on this host (no
-concurrent Claude calls from another S10/S22 runner).
+Refuses to start while another bench vendor arm is live on this host.
 
 Usage:
   guarded_pair.py --agent claude-opus5.5 --task t6-pdf-fact --model claude-opus-5-5 \\
@@ -134,8 +133,8 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     args.bashy = os.path.abspath(args.bashy)
     args.order = args.order.split(",")
-    if args.order not in (["off", "on"], ["script", "on"]):
-        ap.error("--order must be off,on or script,on")
+    if args.order not in (["off", "on"], ["script", "on"], ["yaml", "on"]):
+        ap.error("--order must be off,on, script,on, or yaml,on")
     out = pair(args)
     with open(os.path.join(os.path.abspath(args.evidence), "pair.json"), "w") as fh:
         json.dump(out, fh, indent=1)

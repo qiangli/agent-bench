@@ -124,3 +124,26 @@ remain outside the repository.
 
 This is one valid comparison for one task, favoring script 1 to 0. The
 canonical fallback remains unchanged pending broader evidence.
+
+## YAML single-record versus canonical prose (Story 9c30598a1921)
+
+Starting from published `d949d5b`, the pair selector now permits `yaml,on`.
+The guarded arm checks `.agents/skills/bashy.yaml` for YAML preflight and
+workspace matching. A focused zero-model regression verifies that ycode's YAML
+export produces that file and that the pair forwards identical task, model,
+budget, quiet time, tool, and process guard settings to both selectors. No
+production Bashy default changed.
+
+S10 issue #19 had a terminal committed pair record before preflight. The
+current process guard found zero competing bench runners. Kimi model binding
+verification passed. The standalone zero-model real-HOME canary passed with an
+isolated HOME, no canary-attributed real-HOME changes, and no sandbox denials.
+The fresh Kimi quota refresh then refused with `analyzer door status 502`.
+Following the stop rule, neither vendor arm was launched and no retry was made.
+
+The pair is **UNSCORED**: YAML and prose scores, task results, observed
+discovery, and token usage are unmeasured; provider requests are **0**. A fresh
+balance and balance delta are unavailable. The compact receipt is
+`yaml-pair-summary.json`; the raw preflight failure receipt is archived outside
+git. The canonical fallback remains, and the story stays open pending the
+acceptance matrix.

@@ -96,6 +96,11 @@ class SkillArmTest(unittest.TestCase):
         self.assertTrue(list((self.ws / ".agents" / "skills").rglob("bashy.yaml")))
 
     @unittest.skipUnless(HAVE_BASHY, "bashy not on PATH")
+    def test_ycode_yaml_exports_expected_guard_artifact(self):
+        self.assertEqual(skill_arm.select(str(self.ws), "ycode", "yaml"), [])
+        self.assertTrue((self.ws / ".agents" / "skills" / "bashy.yaml").is_file())
+
+    @unittest.skipUnless(HAVE_BASHY, "bashy not on PATH")
     def test_tool_without_integration_fails_not_mislabelled(self):
         with self.assertRaises(skill_arm.ArmError) as ctx:
             skill_arm.select(str(self.ws), "codex", "on")

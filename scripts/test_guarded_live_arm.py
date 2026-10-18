@@ -339,6 +339,30 @@ class PairTest(unittest.TestCase):
             self.assertEqual([c[c.index("--skill") + 1] for c in calls], ["script", "on"])
             self.assertTrue(all(c[-4:] == ["--tool", "ycode", "--vendor-comm", "bashy"] for c in calls))
 
+    def test_yaml_pair_passes_same_settings_and_uses_yaml_artifact(self):
+        import guarded_pair as gp
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            args = self.args(tmp)
+            args.order = ["yaml", "on"]
+            args.tool = "ycode"
+            args.vendor_comm = ["bashy"]
+            calls = []
+            out = gp.pair(args, self.fake({"yaml": 0, "on": 0}, calls))
+            self.assertEqual(out["verdict"], "PAIRED")
+            self.assertEqual([c[c.index("--skill") + 1] for c in calls], ["yaml", "on"])
+            for flag in ("--agent", "--pack", "--task", "--model", "--budget", "--quiet", "--bashy", "--tool", "--vendor-comm"):
+                self.assertEqual(calls[0][calls[0].index(flag) + 1], calls[1][calls[1].index(flag) + 1])
+            self.assertEqual(g.skill_artifact("ycode", "yaml"), ".agents/skills/bashy.yaml")
+
+    def test_cli_accepts_yaml_on_order(self):
+        import guarded_pair as gp
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp, mock.patch.object(gp, "pair") as paired:
+            paired.return_value = {"verdict": "UNSCORED", "arms": []}
+            rc = gp.main(["--agent", "a", "--task", "t6-pdf-fact", "--model", "m",
+                          "--evidence", tmp, "--bashy", "/x/bashy", "--order", "yaml,on"])
+            self.assertEqual(rc, 1)
+            self.assertEqual(paired.call_args.args[0].order, ["yaml", "on"])
+
     def test_concurrent_runner_detected(self):
         import guarded_pair as gp
         ps = "10 python3 scripts/guarded_live_arm.py --agent x\n11 /bin/zsh\n12 bashy dag run AGENT=y\n13 vim\n"

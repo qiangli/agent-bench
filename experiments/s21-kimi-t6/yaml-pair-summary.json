@@ -1,0 +1,25 @@
+{
+  "story_id": "9c30598a1921",
+  "base_commit": "d949d5b",
+  "pair_order": ["yaml", "on"],
+  "agent": "ycode-kimi-k2.6",
+  "model": "kimi-k2.6",
+  "pack": "skill-uptake",
+  "task": "t6-pdf-fact",
+  "grader_sha256": "07313f529329d0b23bad2214de8a1b4dcc6af986c02b15bfdb22abbf3db5ccf2",
+  "budget": 100,
+  "quiet": 20,
+  "attempts_per_arm": 1,
+  "pair_verdict": "UNSCORED",
+  "stop_reason": "fresh Kimi quota refresh refused: analyzer door status 502",
+  "vendor_invocations": 0,
+  "provider_requests": 0,
+  "arms": [
+    {"skill": "yaml", "score": null, "result_ok": null, "observed_discovery": null, "usage_tokens": null, "status": "not run"},
+    {"skill": "on", "score": null, "result_ok": null, "observed_discovery": null, "usage_tokens": null, "status": "not run"}
+  ],
+  "quota": {"refresh": "REFUSED", "balance_before_usd": null, "balance_after_usd": null, "observed_delta_usd": null},
+  "isolation": {"concurrent_bench_runners": 0, "zero_model_real_home_canary": "PASS", "real_home_changes": 0, "sandbox_denials": 0, "isolated_home": "PASS", "vendor_arm_isolation": "not exercised"},
+  "decision": "No measured comparison; retain canonical fallback and keep story open pending acceptance matrix.",
+  "raw_evidence": "Preflight receipt archived outside git; no vendor transcripts exist."
+}

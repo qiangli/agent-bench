@@ -170,6 +170,8 @@ SKILL_MD = ".claude/skills/bashy/SKILL.md"  # skill_arm.PROJECT_SKILL_ROOTS["cla
 def skill_artifact(tool: str, arm: str) -> str:
     if arm == "script":
         return "AGENTS.md"
+    if arm == "yaml":
+        return ".agents/skills/bashy.yaml"
     return SKILL_MD if tool == "claude" else ".agents/skills/bashy/SKILL.md"
 
 
@@ -180,8 +182,8 @@ def _sha(path: str) -> str | None:
 
 def skill_preflight(bashy: str, sb: str, root: str, tool: str, arm: str, task: str | None = None) -> dict:
     """Zero-model rehearsal of the DAG's skill export under the same guard and a
-    tool-less isolated env: the on arm must produce the SKILL.md the vendor
-    reads, the off arm must not. Returns its sha so the real arm can be matched."""
+    tool-less isolated env: a skill arm must produce the expected artifact,
+    while the off arm must not. Returns its sha so the real arm can be matched."""
     scratch = os.path.join(root, "skill-pre")
     ws, pre = os.path.join(scratch, "ws"), os.path.join(scratch, "pre")
     os.makedirs(ws)
@@ -205,7 +207,7 @@ def skill_preflight(bashy: str, sb: str, root: str, tool: str, arm: str, task: s
     sha = _sha(os.path.join(ws, skill_artifact(tool, arm)))
     out.update(rc=r.returncode, killed=r.returncode in KILLED, skill_md=sha is not None, skill_sha256=sha,
                stderr=r.stderr.strip()[:300])
-    out["ok"] = r.returncode == 0 and (sha is not None) == (arm in ("on", "script"))
+    out["ok"] = r.returncode == 0 and (sha is not None) == (arm in ("on", "script", "yaml"))
     shutil.rmtree(scratch, ignore_errors=True)
     return out
 
@@ -620,7 +622,7 @@ def run(args) -> int:
         got = _sha(os.path.join(ev, "workspace", skill_artifact(tool, args.skill)))
         report["workspace_skill"] = {"skill_md": got is not None, "skill_sha256": got,
                                      "matches_preflight": got == sp.get("skill_sha256")}
-        if os.path.isdir(os.path.join(ev, "workspace")) and ((got is not None) != (args.skill in ("on", "script"))
+        if os.path.isdir(os.path.join(ev, "workspace")) and ((got is not None) != (args.skill in ("on", "script", "yaml"))
                                                               or got != sp.get("skill_sha256")):
             report["failures"].append(f"arm workspace skill does not match SKILL={args.skill}: {report['workspace_skill']}")
         session = open(rec + ".session.log", errors="replace").read() if os.path.isfile(rec + ".session.log") else ""
