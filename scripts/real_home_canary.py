@@ -7,17 +7,21 @@ env to every command; it cannot prove that the bashy binary itself honours it.
 This canary runs the candidate `bashy` (first on PATH, or --bashy) for real:
 
   * The inherited env is poisoned: CLAUDE_CONFIG_DIR, BASHY_HOME,
-    BASHY_MB_DIR, BASHY_SPRINT_DIR, BASHY_ACTIVITY_DIR, BASHY_FLEET_DIR, CODEX_HOME, XDG_*, GEMINI_CLI_HOME and
-    OPENCODE_CONFIG_DIR all point into the real HOME; `arm_home.py prepare`
-    builds the arm env on top of it, exactly as DAG.md does.
+    BASHY_MB_DIR, BASHY_SPRINT_DIR, BASHY_ACTIVITY_DIR, BASHY_FLEET_DIR,
+    BASHY_OTEL_SPOOL, CODEX_HOME, XDG_*, GEMINI_CLI_HOME and OPENCODE_CONFIG_DIR
+    all point into the real HOME; `arm_home.py prepare` builds the preflight
+    and arm envs on top of it, exactly as DAG.md does.
   * Write-deny guard: every arm command runs under macOS sandbox-exec with
     `(deny file-write* (subpath REAL_HOME) (with send-signal SIGKILL))`, so a
     write into a real home cannot happen and the offending process dies loudly
     (SIGKILL). A decoy run first proves the guard is live. Denials are also
     read back from the unified log (com.apple.sandbox.reporting), which catches
     a killed detached child whose exit status nobody waits for.
-  * Commands: `bashy -c`, `chat sessions`, `todo list`, `inspect context`, and
-    the arm launch path itself: `bashy chat --agent benchbot-dry -i` (benchbot
+  * Commands: DAG.md's pre-arm lookups (`agent show --field tool`, `tool show
+    --field cli.binary`) under the tool-less preflight env, then under the arm
+    env its trust_preseed lookup (`tool show --field cli.launch.trust_preseed`),
+    `bashy -c`, `chat sessions`, `todo list`, `inspect context`, and the arm
+    launch path itself: `bashy chat --agent benchbot-dry -i` (benchbot
     calls no model), then `chat sessions`, `chat steer`, `chat steer --enter`,
     until the session's --timeout ends it.
   * Fingerprints (size, mtime, sha256) of the real ~/.claude.json, Claude
@@ -65,7 +69,8 @@ TASK = os.path.join(REPO, "packs", "steer", "t1-pivot")
 CLAUDE_FILES = (".claude.json", ".claude/settings.json", ".claude/.credentials.json")
 BASHY_STORES = (".bashy/sessions", ".bashy/sessions/logs", ".bashy/todo", ".bashy/mb",
                 ".bashy/sprint", ".bashy/activity", ".bashy/fleet", ".bashy/skills/probecache.json", ".bashy/coord/claims.lock",
-                ".bashy/room/member-claims.lock", ".bashy/room/.timeline.lock")
+                ".bashy/room/member-claims.lock", ".bashy/room/.timeline.lock",
+                ".agents/otel/spool")
 # Arm-HOME paths that prove bashy session state works under isolation.
 ARM_STATE = (".bashy/room/timeline.jsonl", ".bashy/exec")
 
@@ -75,6 +80,7 @@ POISON_KEYS = {
     "BASHY_FLEET_DIR": ".bashy/fleet", "CODEX_HOME": ".codex", "XDG_CONFIG_HOME": ".config",
     "XDG_DATA_HOME": ".local/share", "XDG_STATE_HOME": ".local/state",
     "GEMINI_CLI_HOME": "", "OPENCODE_CONFIG_DIR": ".config/opencode",
+    "BASHY_OTEL_SPOOL": ".agents/otel/spool/spans.jsonl",
 }
 # Processes of the canary's own tree, for reading denials back from the log.
 KILLED = (137, -9)  # SIGKILL via a shell, or as Popen reports it
@@ -310,6 +316,18 @@ def run(bashy: str, evidence_dir: str | None = None) -> dict:
         since_ns = time.time_ns()
         before = fingerprint(homes)
 
+        # DAG.md's pre-arm lookups, under its tool-less preflight env.
+        pre = dict(line.split("=", 1) for line in subprocess.run(
+            [sys.executable, os.path.join(REPO, "scripts", "arm_home.py"), "prepare",
+             "--arm-dir", os.path.join(root, "pre"), "--tool", "none"],
+            env=base, capture_output=True, text=True, check=True, timeout=300).stdout.splitlines() if "=" in line)
+        preenv = arm_home.arm_environ(base, pre, homes)
+        c.step("preflight agent show", [bashy, "agent", "show", "benchbot-dry", "--field", "tool"], preenv,
+               ok=lambda r: r.returncode == 0 and r.stdout.strip() == "benchbot", cwd=ws)
+        c.step("preflight tool show cli.binary", [bashy, "tool", "show", "benchbot", "--field", "cli.binary"],
+               preenv, cwd=ws)
+        c.step("tool show trust_preseed", [bashy, "tool", "show", "benchbot", "--field",
+                                           "cli.launch.trust_preseed"], env, cwd=ws)
         c.step("bashy -c", [bashy, "-c", "echo canary-ok"], env,
                ok=lambda r: "canary-ok" in r.stdout, cwd=ws)
         c.step("chat sessions", [bashy, "chat", "sessions"], env, cwd=ws)

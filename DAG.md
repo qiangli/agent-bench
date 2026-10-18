@@ -171,8 +171,17 @@ for i in $(seq 1 "$K"); do
   (cd "$ws" && git init -q -b main && git add -A && git -c user.name=bench -c user.email=bench@example.invalid commit -qm fixture)
 
   # The agent's tool, resolved once for isolation, trust preseed and skill export.
-  tool=$(bashy agent show "$AGENT" --field tool)
-  bin=$(bashy tool show "$tool" --field cli.binary 2>/dev/null)
+  # These lookups choose the tool the arm env is built for, so they cannot use
+  # it; they run under a tool-less preflight HOME instead. Even read-only bashy
+  # commands write (the telemetry spool under $HOME/.agents/otel), and the
+  # write-deny canary (scripts/real_home_canary.py) kills them under the real HOME.
+  pre=$(mktemp -d "$ARM_ROOT/bench-pre.XXXXXX")
+  preout=$(python3 scripts/arm_home.py prepare --arm-dir "$pre" --tool none) \
+    || { echo "PREFLIGHT ISOLATION FAILED $AGENT $TASK#$i — not launched" >&2; rm -rf "$ws" "$pre"; exit 1; }
+  preenv=(); while IFS= read -r l; do [ -n "$l" ] && preenv+=("$l"); done <<< "$preout"
+  tool=$(env "${preenv[@]}" bashy agent show "$AGENT" --field tool)
+  bin=$(env "${preenv[@]}" bashy tool show "$tool" --field cli.binary 2>/dev/null)
+  rm -rf "$pre"
   case $bin in */*) ;; *) bin= ;; esac  # pin a managed path; a bare name resolves on PATH
 
   # Every arm gets its own temporary HOME (run #7 was killed for live arms
@@ -208,7 +217,7 @@ for i in $(seq 1 "$K"); do
   # default and refuses the operator HOME), merged additively into the read-only-copied config
   # (scripts/trust_preseed.py: flock-guarded, atomic, permission-preserving,
   # corrupt file backed aside).
-  if [ "$(bashy tool show "$tool" --field cli.launch.trust_preseed 2>/dev/null)" = .claude.json ]; then
+  if [ "$(env "${armenv[@]}" bashy tool show "$tool" --field cli.launch.trust_preseed 2>/dev/null)" = .claude.json ]; then
     python3 scripts/trust_preseed.py --workspace "$ws" --home "$acd" >/dev/null \
       || { echo "TRUST PRESEED FAILED $AGENT $TASK#$i — not scored" >&2; armdone; rm -rf "$ws" "$ws.bashy-home"; continue; }
   fi

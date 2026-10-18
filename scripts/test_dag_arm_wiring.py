@@ -2,7 +2,7 @@
 launch: `bashy` is a stub on PATH that records the argv and environment of
 every call.
 
-The block from the arm's tool lookup through the launch (`pid=$!`) is cut out
+The block from the preflight env and tool lookup through the launch (`pid=$!`) is cut out
 of DAG.md verbatim and run under bash with a poisoned inherited
 CLAUDE_CONFIG_DIR=$REAL_HOME/.claude and a stand-in operator home
 (BENCH_OPERATOR_HOME) as the seed source. It must pass the arm's isolated
@@ -46,7 +46,7 @@ esac
 def run_block():
     text = (REPO / "DAG.md").read_text()
     body = text.split("### run", 1)[1].split("~~~python as grade", 1)[0]
-    start = body.index("  tool=$(bashy agent show")
+    start = body.index("  pre=$(mktemp")
     end = body.index("  pid=$!", start) + len("  pid=$!")
     return body, body[start:end]
 
@@ -72,6 +72,16 @@ class DagArmWiringTest(unittest.TestCase):
         for line in calls:
             self.assertRegex(line, r'env "\$\{armenv\[@\]\}"[^|;]*bashy chat', line)
         self.assertIn('trust_preseed.py --workspace "$ws" --home "$acd"', body)
+        # Every bashy call runs under an isolated env: the two pre-arm
+        # tool-selecting lookups under the preflight env, the rest under the arm env.
+        split = joined.index("armenv=(); while")
+        for part, env in ((joined[joined.index("  pre=$(mktemp"):split], "preenv"),
+                          (joined[split:], "armenv")):
+            for line in part.splitlines():
+                if line.lstrip().startswith("#"):
+                    continue
+                for m in re.finditer(r"(?<![\w/.-])bashy (?!chat)\w", line):
+                    self.assertRegex(line[:m.start()], r'env "\$\{' + env + r'\[@\]\}"[^|;(]*$', line)
         self.assertNotIn('--home "$ah"', body)
 
     def test_dry_run_preseeds_and_launches_in_arm_config_dir(self):
@@ -111,6 +121,17 @@ class DagArmWiringTest(unittest.TestCase):
             ccd = os.path.join(home, ".claude")
             calls = [json.loads(l) for l in log.read_text().splitlines()]
             launch = [c for c in calls if c["argv"][:2] == ["chat", "--agent"]]
+            pre = [c for c in calls if c["argv"][:2] in (["agent", "show"], ["tool", "show"])
+                   and c["argv"][-1] in ("tool", "cli.binary")]
+            self.assertEqual(len(pre), 2)
+            for c in pre:  # preflight HOME: neither the arm HOME nor a real one
+                self.assertTrue(os.path.basename(os.path.dirname(c["env"]["HOME"])).startswith("bench-pre."), c)
+                self.assertFalse(any(os.path.realpath(c["env"]["BASHY_HOME"]).startswith(h + os.sep)
+                                     for h in REAL_HOMES), c)
+            tp = [c for c in calls if c["argv"][-1:] == ["cli.launch.trust_preseed"]]
+            self.assertEqual(len(tp), 1)
+            self.assertEqual(os.path.realpath(tp[0]["env"]["HOME"]), home)
+            self.assertEqual(os.path.realpath(tp[0]["env"]["CLAUDE_CONFIG_DIR"]), ccd)
             self.assertEqual(len(launch), 1)
             for c in (c for c in calls if c["argv"][:1] == ["chat"]):
                 for key, value in c["env"].items():

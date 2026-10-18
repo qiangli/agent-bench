@@ -55,7 +55,8 @@ class Helpers(unittest.TestCase):
         for key in ("BASHY_MB_DIR", "BASHY_SPRINT_DIR", "BASHY_ACTIVITY_DIR", "BASHY_FLEET_DIR"):
             self.assertEqual(cleared.get(key), "", key)
         env = arm_home.arm_environ(base, armenv, [real])
-        for key in ("BASHY_MB_DIR", "BASHY_SPRINT_DIR", "BASHY_ACTIVITY_DIR", "BASHY_FLEET_DIR"):
+        for key in ("BASHY_MB_DIR", "BASHY_SPRINT_DIR", "BASHY_ACTIVITY_DIR", "BASHY_FLEET_DIR",
+                    "BASHY_OTEL_SPOOL"):
             self.assertEqual(env.get(key), "", key)
 
     def test_profile_denies_writes_to_every_home_with_kill(self):
@@ -158,8 +159,12 @@ class RealBinary(unittest.TestCase):
         self.assertEqual(report["sandbox_denials"], [])
         for key in ("CLAUDE_CONFIG_DIR", "BASHY_HOME", "CODEX_HOME", "XDG_CONFIG_HOME"):
             self.assertTrue(report["arm_env"][key].startswith(os.path.dirname(report["arm_home"])), key)
-        for key in ("BASHY_MB_DIR", "BASHY_SPRINT_DIR", "BASHY_ACTIVITY_DIR", "BASHY_FLEET_DIR"):
+        for key in ("BASHY_MB_DIR", "BASHY_SPRINT_DIR", "BASHY_ACTIVITY_DIR", "BASHY_FLEET_DIR",
+                    "BASHY_OTEL_SPOOL"):
             self.assertEqual(report["arm_env"][key], "")
+        steps = {s["step"]: s for s in report["steps"]}
+        for name in ("preflight agent show", "preflight tool show cli.binary", "tool show trust_preseed"):
+            self.assertTrue(steps[name]["ok"], steps[name])
         self.assertIn("benchbot: steer received", report["benchbot_commits"])
 
 

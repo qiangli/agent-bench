@@ -149,7 +149,8 @@ class ArmHomeTest(unittest.TestCase):
                 env=dict(os.environ, BENCH_OPERATOR_HOME=str(self.op),
                          BASHY_HOME=os.path.join(real, ".bashy"),
                          BASHY_MB_DIR=os.path.join(real, ".bashy/mb"),
-                         BASHY_SPRINT_DIR=os.path.join(real, ".bashy/sprint")),
+                         BASHY_SPRINT_DIR=os.path.join(real, ".bashy/sprint"),
+                         BASHY_OTEL_SPOOL=os.path.join(real, ".agents/otel/spool/spans.jsonl")),
                 capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
             lines = r.stdout.splitlines()
@@ -157,6 +158,7 @@ class ArmHomeTest(unittest.TestCase):
             self.assertIn(f"BASHY_HOME={home}/.bashy", lines)
             self.assertIn("BASHY_MB_DIR=", lines)
             self.assertIn("BASHY_SPRINT_DIR=", lines)
+            self.assertIn("BASHY_OTEL_SPOOL=", lines)  # telemetry spool, not a *_DIR
 
     def test_env_points_only_at_arm_home(self):
         env = self.prepare(tool="codex", binary="$HOME/.bashy/tools/codex/1/codex")

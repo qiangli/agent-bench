@@ -104,11 +104,11 @@ GUARDED_KEYS = ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
                 "OPENCODE_CONFIG_DIR", "OPENCODE_CONFIG", "BASHY_HOME")
 
 # bashy honours many more per-store overrides (BASHY_MB_DIR, BASHY_SPRINT_DIR,
-# BASHY_KB_DIR, BASHY_PTY_DIR, BASHY_ROOT, ...). Rather than track the
+# BASHY_KB_DIR, BASHY_PTY_DIR, BASHY_ROOT, BASHY_OTEL_SPOOL, ...). Rather than track the
 # list, every inherited BASHY_* variable whose name says it is a location is
 # cleared (set empty, so bashy falls back to its default under the arm's
 # BASHY_HOME) unless the arm env sets it itself.
-STATEFUL_BASHY = re.compile(r"^BASHY_[A-Z0-9_]*_(HOME|DIR|PATH|ROOT|STATE|FILE)$|^BASHY_ROOT$")
+STATEFUL_BASHY = re.compile(r"^BASHY_[A-Z0-9_]*_(HOME|DIR|PATH|ROOT|STATE|FILE|SPOOL)$|^BASHY_ROOT$")
 
 
 def stateful_bashy_keys(env: dict[str, str]) -> list[str]:
