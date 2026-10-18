@@ -101,3 +101,26 @@ The prose arm was not launched. No retry was made. The earlier run14 score of
 1 remains unverified, the canonical fallback stays in place, and S21 remains
 open. `interrupted-summary.json` is the sanitized record; raw isolated HOME
 and workspace artifacts were not added to the repository.
+
+## Fresh matched pair after the interrupted attempt
+
+The preserved issue-16 commit was applied without content changes as `31ac2bc`
+with this story's trailers. The concurrency predicate was reviewed and an
+offline test now covers the driver ancestry and a separate sibling runner.
+The focused zero-model suite passed (53 tests). The new pair used one
+`script,on` dispatch, fresh measured Kimi balance, the native ycode USD 3
+route budget, `BUDGET=100`, `QUIET=20`, `ATTEMPTS=1`, and a three-minute CLI
+wall limit per arm. Both arms passed the zero-model real-HOME canary, before
+and after write-deny probes, skill export match, usage receipt, and guard
+checks. There were no real-HOME changes or sandbox denials.
+
+The script arm scored **1** (correct PDF due date) with 12 ycode requests and
+14,818 input / 1,213 output tokens. The prose arm scored **0** (wrong PDF fact)
+with 10 requests and 12,229 input / 1,201 output tokens. The measured balance
+was USD 19.03179 before and after each arm; an unchanged receipt is not a
+claim about eventual billing. `fresh-pair-summary.json` contains the compact
+sanitized comparison. Raw HOME, session logs, and credential-bearing records
+remain outside the repository.
+
+This is one valid comparison for one task, favoring script 1 to 0. The
+canonical fallback remains unchanged pending broader evidence.

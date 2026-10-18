@@ -345,6 +345,19 @@ class PairTest(unittest.TestCase):
         self.assertEqual(len(gp.concurrent_runs(ps, {13})), 2)
         self.assertEqual(gp.concurrent_runs(ps, {10, 12}), [])
 
+    def test_ancestry_excluded_but_sibling_runner_detected(self):
+        from unittest import mock
+        import guarded_pair as gp
+        self.PS = "10 1\n11 10\n12 11\n13 10\n"
+        with mock.patch.object(gp.os, "getpid", return_value=12):
+            own = gp.own_pids()
+        self.assertEqual(own, {12, 11, 10, 1})
+        ps = ("10 /bin/zsh python3 scripts/guarded_pair.py --agent self\n"
+              "11 bashy python3 scripts/guarded_pair.py --agent self\n"
+              "13 python3 scripts/guarded_live_arm.py --agent other\n")
+        self.assertEqual(gp.concurrent_runs(ps, own),
+                         ["13 python3 scripts/guarded_live_arm.py --agent other"])
+
     def test_live_runner_blocks_pair_before_any_request(self):
         import guarded_pair as gp
         self.PS = "99999 python3 scripts/guarded_live_arm.py --agent other\n"

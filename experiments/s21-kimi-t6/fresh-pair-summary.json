@@ -1,0 +1,80 @@
+{
+  "story_id": "9c30598a1921",
+  "base_commit": "4559a82eb783fdd8646722806cd51b037131e564",
+  "pair_order": [
+    "script",
+    "on"
+  ],
+  "agent": "ycode-kimi-k2.6",
+  "model": "kimi-k2.6",
+  "pack": "skill-uptake",
+  "task": "t6-pdf-fact",
+  "grader_sha256": "07313f529329d0b23bad2214de8a1b4dcc6af986c02b15bfdb22abbf3db5ccf2",
+  "budget": 100,
+  "quiet": 20,
+  "attempts_per_arm": 1,
+  "cli_wall_limit_seconds_per_arm": 180,
+  "pair_verdict": "PAIRED",
+  "concurrent_bench_runners": 0,
+  "started": "2026-10-18T16:24:14.127997-07:00",
+  "finished": "2026-10-18T16:30:50.669180-07:00",
+  "arms": [
+    {
+      "skill": "script",
+      "verdict": "PASS",
+      "score": {
+        "points": 1,
+        "result_ok": true,
+        "why": "PDF due date correct"
+      },
+      "provider_requests": 12,
+      "usage_tokens": {
+        "input_tokens": 14818,
+        "output_tokens": 1213,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 10240
+      },
+      "balance_before_usd": 19.03179,
+      "balance_after_usd": 19.03179,
+      "observed_balance_delta_usd": 0.0,
+      "native_route_budget_usd": 3.0,
+      "preflight_and_workspace_skill_sha256": "2889df93b901dd552701907faf3c16463cfba5e2f13a047af3f8a800c0fb2e3b",
+      "zero_model_canary": "PASS",
+      "negative_controls_before_and_after": "PASS",
+      "real_home_changes": 0,
+      "sandbox_denials": 0,
+      "dag_exit_code": 0,
+      "arm_wall_seconds": 136.4
+    },
+    {
+      "skill": "on",
+      "verdict": "PASS",
+      "score": {
+        "points": 0,
+        "result_ok": false,
+        "why": "wrong PDF fact"
+      },
+      "provider_requests": 10,
+      "usage_tokens": {
+        "input_tokens": 12229,
+        "output_tokens": 1201,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 8448
+      },
+      "balance_before_usd": 19.03179,
+      "balance_after_usd": 19.03179,
+      "observed_balance_delta_usd": 0.0,
+      "native_route_budget_usd": 3.0,
+      "preflight_and_workspace_skill_sha256": "a5b4f49cc9a828004b4131124f53c813b88d4c5177c9809b6f1316f595c08b80",
+      "zero_model_canary": "PASS",
+      "negative_controls_before_and_after": "PASS",
+      "real_home_changes": 0,
+      "sandbox_denials": 0,
+      "dag_exit_code": 0,
+      "arm_wall_seconds": 143.1
+    }
+  ],
+  "decision": "Single valid comparative pair favors script 1 to 0 on this task. Keep canonical fallback; no default change from one pair.",
+  "balance_note": "Provider balance was unchanged at each measured receipt; this is not a final billing claim.",
+  "raw_evidence": "Kept outside repository; only selected sanitized fields committed."
+}
