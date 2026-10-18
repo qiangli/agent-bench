@@ -1,0 +1,6 @@
+# Raw PTY screen captures (a TUI's escape sequences, padding and blank cells,
+# byte for byte) are evidence, not text: never diffed, merged or whitespace-
+# checked. Renamed to *.bin; the raw names cover future evidence too.
+*.bin binary
+*.screen.log binary
+**/.bashy/sessions/logs/*.log binary

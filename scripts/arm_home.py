@@ -117,9 +117,30 @@ def stateful_bashy_keys(env: dict[str, str]) -> list[str]:
     return sorted(k for k in env if STATEFUL_BASHY.match(k))
 
 
+# The runner itself often runs inside an agent session (a Claude Code or Codex
+# worker), and its session markers reach the arm through the environment.
+# Measured in S10: the off arm inherited CLAUDE_CODE_CHILD_SESSION=1, so Claude
+# drew "Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker"
+# and wrote no transcript: the run had no attributable usage record. The
+# messaging token and socket are the PARENT's private control channel. Every
+# such marker is cleared (Claude tests them for truthiness, so "" is off), and
+# CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 (the override Claude's own warning
+# names) keeps the arm's transcript even if a marker slips through.
+PARENT_SESSION = re.compile(
+    r"^(CLAUDECODE|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_CODE_(CHILD_SESSION|SESSION_ID|SESSION_ATTENDED|"
+    r"ENTRYPOINT|EXECPATH|SHELL|MESSAGING_[A-Z0-9_]+)|CODEX_(CI|SESSION_ID|THREAD_ID))$")
+ARM_PERSISTENCE = {"CLAUDE_CODE_FORCE_SESSION_PERSISTENCE": "1"}
+
+
+def parent_session_keys(env: dict[str, str]) -> list[str]:
+    return sorted(k for k in env if PARENT_SESSION.match(k))
+
+
 def clear_inherited(base: dict[str, str], arm_env: dict[str, str]) -> dict[str, str]:
-    """KEY="" for every inherited stateful BASHY_* key the arm env does not set."""
-    return {k: "" for k in stateful_bashy_keys(base) if k not in arm_env}
+    """KEY="" for every inherited stateful BASHY_* key and parent-session
+    marker the arm env does not set."""
+    keys = stateful_bashy_keys(base) + parent_session_keys(base)
+    return {k: "" for k in keys if k not in arm_env}
 
 
 class UnsafeTarget(RuntimeError):
@@ -263,6 +284,7 @@ def prepare(arm_dir: str, tool: str, source_home: str | None = None,
         "XDG_STATE_HOME": os.path.join(home, ".local/state"),
         "XDG_CACHE_HOME": os.path.join(home, ".cache"),
         "DISABLE_AUTOUPDATER": "1",
+        **ARM_PERSISTENCE,
     }
     env.update(vendor_overrides(home))
     # With CLAUDE_CONFIG_DIR set, Claude reads $CLAUDE_CONFIG_DIR/.claude.json,

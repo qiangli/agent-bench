@@ -10,7 +10,16 @@
 
 Unknown arms fail loudly rather than silently running the wrong arm. An
 export that exits 0 but writes nothing (a tool with no `integration:` block:
-codex, claude) also fails, so a no-skill run is never labelled skill-on.
+codex) also fails, so a no-skill run is never labelled skill-on.
+
+Claude: bashy's claude tool declares no `integration:` block either, so
+`--tool claude` fails ("declares no integration"; a product gap in bashy, not
+worked around here). Claude does read project skills from
+`<cwd>/.claude/skills/<name>/SKILL.md`, and plain `skill export --repo` (no
+--tool) writes exactly that folder when the repo has a `.claude` dir, beside
+the standard `.agents/skills`. So for a tool in PROJECT_SKILL_ROOTS the on arm
+creates that dir, exports with plain `--repo`, and fails unless the vendor's
+own SKILL.md landed in the workspace. Nothing is written outside it.
 The exported skill is committed to the workspace. Prints the KEY=VALUE lines
 the agent must be launched with.
 
@@ -22,11 +31,18 @@ Usage: skill_arm.py --workspace WS --tool TOOL --arm off|on|yaml|script
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 
 ARMS = ("off", "on", "yaml", "script")
 BENCH_GIT = ["-c", "user.name=bench", "-c", "user.email=bench@example.invalid"]
+
+
+# Tools with no bashy integration block whose CLI reads a project skill root
+# that `skill export --repo` fills once the vendor dir exists: tool -> (dir to
+# create, SKILL.md path the vendor reads, relative to the workspace).
+PROJECT_SKILL_ROOTS = {"claude": (".claude", ".claude/skills/bashy/SKILL.md")}
 
 
 class ArmError(RuntimeError):
@@ -44,7 +60,11 @@ def select(ws: str, tool: str, arm: str, bashy: str = "bashy") -> list[str]:
         return []
     if arm == "script":
         return ["BASHY_HELP_FORMAT=script"]
-    if arm == "on":
+    vendor = PROJECT_SKILL_ROOTS.get(tool) if arm == "on" else None
+    if vendor:
+        os.makedirs(os.path.join(ws, vendor[0]), exist_ok=True)
+        cmd = [bashy, "skill", "export", "bashy", "--repo"]
+    elif arm == "on":
         cmd = [bashy, "skill", "export", "bashy", "--repo", "--tool", tool]
     else:
         cmd = [bashy, "skill", "export", "bashy", "--to", f"{ws}/.agents/skills", "--yaml", "--tool", tool]
@@ -54,6 +74,8 @@ def select(ws: str, tool: str, arm: str, bashy: str = "bashy") -> list[str]:
         raise ArmError(f"{arm} export rc={done.returncode}: {out[:300]}")
     if not _git(ws, "status", "--porcelain").strip():
         raise ArmError(f"{arm} export wrote nothing (tool {tool!r} declares no integration: {out[:300]})")
+    if vendor and not os.path.isfile(os.path.join(ws, vendor[1])):
+        raise ArmError(f"on export did not write {vendor[1]}, the skill {tool} reads: {out[:300]}")
     _git(ws, "add", "-A")
     _git(ws, *BENCH_GIT, "commit", "-qm", "skill" if arm == "on" else "skill-yaml")
     return []

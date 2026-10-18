@@ -13,6 +13,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent))
 import arm_home
@@ -113,6 +114,24 @@ class ArmHomeTest(unittest.TestCase):
             self.assertEqual(hits, [])
             import shutil
             shutil.rmtree(self.arm)
+
+    def test_parent_agent_session_markers_cleared(self):
+        # S10: an inherited CLAUDE_CODE_CHILD_SESSION turned off the arm's
+        # transcript (no attributable usage); the messaging token is the parent's.
+        parent = {"CLAUDE_CODE_CHILD_SESSION": "1", "CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "p",
+                  "CLAUDE_CODE_ENTRYPOINT": "sdk-cli", "CLAUDE_CODE_MESSAGING_TOKEN": "secret",
+                  "CLAUDE_CODE_MESSAGING_SOCKET": "/tmp/s", "CLAUDE_PID": "1", "CODEX_THREAD_ID": "t",
+                  "CLAUDE_CODE_USE_BEDROCK": "1", "PATH": "/usr/bin"}
+        env = self.prepare(tool="claude")
+        merged = arm_home.arm_environ(parent, env, protected=self.protected)
+        for key in parent:
+            if key not in ("CLAUDE_CODE_USE_BEDROCK", "PATH"):
+                self.assertEqual(merged[key], "", key)
+        self.assertEqual(merged["CLAUDE_CODE_USE_BEDROCK"], "1")  # operator config, not a marker
+        self.assertEqual(merged["CLAUDE_CODE_FORCE_SESSION_PERSISTENCE"], "1")
+        # The CLI prints the clearing lines too, so `env "${armenv[@]}"` drops them.
+        with mock.patch.dict(os.environ, parent):
+            self.assertEqual(arm_home.clear_inherited(dict(os.environ), env)["CLAUDE_CODE_CHILD_SESSION"], "")
 
     def test_unredirected_poisoned_key_fails_closed(self):
         for real in REAL_HOMES + [str(self.op)]:

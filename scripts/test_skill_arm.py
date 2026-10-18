@@ -88,6 +88,17 @@ class SkillArmTest(unittest.TestCase):
         self.assertRegex(str(ctx.exception), "declares no integration|wrote nothing")
         self.assertEqual(self.commits(), ["fixture"])
 
+    @unittest.skipUnless(HAVE_BASHY, "bashy not on PATH")
+    def test_claude_on_exports_project_skill_claude_reads(self):
+        # bashy's claude tool has no integration block; the on arm still lands
+        # the skill where Claude reads project skills, inside the workspace only.
+        self.assertEqual(skill_arm.select(str(self.ws), "claude", "on"), [])
+        self.assertEqual(self.commits(), ["skill", "fixture"])
+        skill = self.ws / ".claude" / "skills" / "bashy" / "SKILL.md"
+        self.assertTrue(skill.is_file())
+        self.assertTrue(skill.read_text().startswith("---\nname: bashy\n"))
+        self.assertIn(".claude/skills/bashy/SKILL.md", self.git("ls-files"))
+
 
 if __name__ == "__main__":
     unittest.main()
