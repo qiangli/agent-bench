@@ -1,0 +1,112 @@
+{
+ "agent": "claude-opus5.5",
+ "model": "claude-opus-5-5",
+ "tool": "claude 2.1.283",
+ "pack": "skill-uptake",
+ "task": "t7-json-yaml",
+ "dag": "bashy dag run K=1 ATTEMPTS=1 BUDGET=100 QUIET=20 THINK=60 MIN_POST_STEER=20",
+ "harness": "scripts/guarded_live_arm.py; fixture, DAG.md and guard scripts unchanged between the off and on base commits",
+ "verdict": "PAIRED",
+ "delta_points": 0,
+ "why": "both arms PASS the guard and score 1 pt with discovery 0; the on arm exported the bashy skill but the agent never used a bashy command",
+ "caveat": "arms ran in separate invocations: off in run #15 (earlier candidate build), on in run #19 (candidate rebuilt from bashy 8f0d6b1b with the inbox isolation fix); off was not rerun",
+ "arms": [
+  {
+   "skill": "off",
+   "source": "run #15, saved metrics",
+   "verdict": "PASS",
+   "score": {
+    "points": 1,
+    "fail": false,
+    "result_ok": true,
+    "discovery": 0,
+    "format_use": "none",
+    "why": "configuration edited and converted",
+    "ended": "idle",
+    "secs": 106
+   },
+   "skill_md": false,
+   "requests": 5,
+   "usage_total": {
+    "input_tokens": 10,
+    "output_tokens": 634,
+    "cache_creation_input_tokens": 16935,
+    "cache_read_input_tokens": 183999
+   },
+   "quota_before": {
+    "5h": 6,
+    "week": 39
+   },
+   "quota_after": {
+    "5h": 6,
+    "week": 39
+   },
+   "wall_s": 140.0,
+   "canary": "PASS",
+   "negative_controls": "decoy and real-HOME probe writes SIGKILLed and absent, before and after",
+   "sandbox_denials": [],
+   "real_home_changed": [],
+   "keychain_unchanged": true,
+   "vendor_processes": 1,
+   "vendor_sandboxed": true,
+   "vendor_home_isolated": true,
+   "vendor_claude_config_dir_isolated": true,
+   "task_delivered": true,
+   "quota_source": "cached-fallback (refresh failed, nonstale cache)"
+  },
+  {
+   "skill": "on",
+   "source": "run #19, this commit",
+   "verdict": "PASS",
+   "bashy": {
+    "vcs_revision": "8f0d6b1b99322e78a77d6365a4d4bbe1b465ce57",
+    "vcs_modified": "true (untracked docs/todo files only; no tracked diff)",
+    "on_bashy_main": true,
+    "umbrella_pin": "91834c22",
+    "binary_sha256": "15265c05e1f7fa84cddfdd7f489512a36a57e546247131bfb50ca56a7286154e"
+   },
+   "score": {
+    "points": 1,
+    "fail": false,
+    "result_ok": true,
+    "discovery": 0,
+    "format_use": "none",
+    "why": "configuration edited and converted",
+    "ended": "idle",
+    "secs": 117
+   },
+   "skill_md": true,
+   "skill_sha256": "a5b4f49cc9a828004b4131124f53c813b88d4c5177c9809b6f1316f595c08b80",
+   "requests": 5,
+   "transcript_sessions": 1,
+   "usage_cwd_is_arm_workspace": true,
+   "usage_total": {
+    "input_tokens": 10,
+    "output_tokens": 498,
+    "cache_creation_input_tokens": 17701,
+    "cache_read_input_tokens": 186942
+   },
+   "quota_before": {
+    "5h": 7,
+    "week": 39
+   },
+   "quota_after": {
+    "5h": 7,
+    "week": 39
+   },
+   "wall_s": 150.8,
+   "canary": "PASS",
+   "negative_controls": "decoy and real-HOME probe writes SIGKILLed and absent, before and after",
+   "sandbox_denials": [],
+   "real_home_changed": [],
+   "keychain_unchanged": true,
+   "vendor_processes": 1,
+   "vendor_sandboxed": true,
+   "vendor_home_isolated": true,
+   "vendor_claude_config_dir_isolated": true,
+   "task_delivered": true,
+   "quota_source": "cached-fallback (refresh failed, nonstale cache)"
+  }
+ ],
+ "remaining_known_leak": "the canary's last-step `bashy inbox` probe (not on the arm path) is still SIGKILLed: with 8f0d6b1b the mailbox follows the isolated HOME, but the command still writes a lock under the real ~/.bashy/steward/registry"
+}
