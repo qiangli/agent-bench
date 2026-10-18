@@ -118,6 +118,27 @@ def quota(bashy: str, label: str) -> tuple[dict, str, dict]:
     return rows or {}, r.stdout, meta
 
 
+def balance(bashy: str, provider: str) -> tuple[dict, str]:
+    r = subprocess.run([bashy, "model", "quota", "--provider", provider, "--json"],
+                       capture_output=True, text=True, timeout=60)
+    try:
+        rows = json.loads(r.stdout)["items"]
+    except (ValueError, KeyError):
+        return {}, r.stdout
+    valid = [row for row in rows if row.get("label") == provider]
+    return (valid[0] if len(valid) == 1 else {}), r.stdout
+
+
+def balance_ok(row: dict, remaining_usd: float) -> str | None:
+    if (row.get("status") != "ok" or row.get("stale") is not False
+            or row.get("classification") != "measured" or row.get("balance_unit") != "USD"
+            or not isinstance(row.get("balance"), (int, float)) or isinstance(row.get("balance"), bool)):
+        return "no fresh measured USD balance"
+    if row["balance"] < remaining_usd:
+        return f"USD balance {row['balance']} below remaining ceiling {remaining_usd}"
+    return None
+
+
 def quota_ok(rows: dict, max_5h: int, max_week: int) -> str | None:
     for window, cap in (("5h", max_5h), ("week", max_week)):
         row = rows.get(window)
@@ -310,6 +331,44 @@ def usage_records(arm_evidence: str, ws_real: str, model: str | None) -> list[di
     return out
 
 
+def ycode_receipt(arm_evidence: str, model: str | None) -> tuple[list[dict], int]:
+    """Read ycode's isolated event log and final committed message payload.
+
+    The append-only log counts provider requests, including failed and
+    uncommitted ones. The final session payload supplies exact provider token
+    usage. A mixed-session arm fails closed rather than attributing host work.
+    """
+    root = os.path.join(arm_evidence, ".bashy", "ycode", "harness")
+    path = os.path.join(root, "sessions", "events.jsonl")
+    with open(path, encoding="utf-8") as fh:
+        events = [json.loads(line) for line in fh if line.strip()]
+    sessions = {e.get("session_id") for e in events if e.get("session_id")}
+    if len(sessions) != 1:
+        raise ValueError(f"expected one isolated ycode session, found {len(sessions)}")
+    requests = [e for e in events if e.get("type") == "llm.requested"]
+    commits = [e for e in events if e.get("type") == "session.turn-committed"]
+    if not commits:
+        return [], len(requests)
+    ref = commits[-1].get("data", {}).get("messages_ref", "")
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", ref):
+        raise ValueError("invalid ycode messages_ref")
+    payload = os.path.join(root, "payloads", ref.removeprefix("sha256:"))
+    with open(payload, encoding="utf-8") as fh:
+        messages = json.load(fh)
+    out = []
+    for msg in messages:
+        if msg.get("role") != "assistant" or not isinstance(msg.get("usage"), dict):
+            continue
+        usage = msg["usage"]
+        if not all(isinstance(usage.get(k), int) and not isinstance(usage[k], bool) and usage[k] >= 0
+                   for k in ("input_tokens", "output_tokens")):
+            raise ValueError("ycode assistant usage lacks exact token counts")
+        out.append({"session": next(iter(sessions)), "model": msg.get("model"),
+                    "model_ok": model is None or msg.get("model") == model,
+                    "usage": {k: v for k, v in usage.items() if isinstance(v, int) and not isinstance(v, bool)}})
+    return out, len(requests)
+
+
 def run(args) -> int:
     ev = os.path.abspath(args.evidence)
     os.makedirs(ev, exist_ok=True)
@@ -334,6 +393,19 @@ def run(args) -> int:
     model = args.model
     report["tool"], report["model"] = tool, model
 
+    if tool == "ycode":
+        bal, raw = balance(args.bashy, args.quota_label or "kimi")
+        with open(os.path.join(ev, "quota.before.json"), "w", encoding="utf-8") as fh:
+            fh.write(raw)
+        report["balance_before_usd"] = bal.get("balance")
+        why = balance_ok(bal, args.spend_ceiling)
+        if why:
+            report["failures"].append(f"balance gate: {why}")
+        # The installed Genie/Ycode profile permits many provider calls and a
+        # USD 3 route budget. A wall timeout and a post-run receipt cannot
+        # enforce the requested one-call/USD 0.50 ceiling before spending.
+        report["failures"].append("ycode request cap and USD 0.50 hard cost cap are unverified; zero requests")
+        return save(2)
     rows, raw, report["quota_before_read"] = quota(args.bashy, args.quota_label or tool)
     open(os.path.join(ev, "quota.before.json"), "w").write(raw)
     report["quota_before"] = {w: r.get("used_percent") for w, r in rows.items()}
@@ -483,18 +555,29 @@ def run(args) -> int:
 
         # The DAG makes the workspace with mktemp under TMPDIR (= root).
         arm_ev = os.path.join(ev, "run.arm")
-        cwds = {u["cwd"] for u in usage_records(arm_ev, "", None)} if os.path.isdir(arm_ev) else set()
-        cand = sorted(d for d in cwds if d.startswith(root + "/bench-ws."))
-        ws_real = cand[0] if len(cand) == 1 else ""
-        report["arm_workspace"] = ws_real or sorted(cwds)
-        usage = usage_records(arm_ev, ws_real, model) if os.path.isdir(arm_ev) else []
+        if tool == "ycode" and os.path.isdir(arm_ev):
+            try:
+                usage, request_count = ycode_receipt(arm_ev, model)
+            except (OSError, ValueError, TypeError) as error:
+                usage, request_count = [], 0
+                report["failures"].append(f"invalid ycode usage receipt: {error}")
+            report["arm_workspace"] = "isolated ycode session"
+        else:
+            cwds = {u["cwd"] for u in usage_records(arm_ev, "", None)} if os.path.isdir(arm_ev) else set()
+            cand = sorted(d for d in cwds if d.startswith(root + "/bench-ws."))
+            ws_real = cand[0] if len(cand) == 1 else ""
+            report["arm_workspace"] = ws_real or sorted(cwds)
+            usage = usage_records(arm_ev, ws_real, model) if os.path.isdir(arm_ev) else []
+            request_count = len({u["request"] for u in usage if u["request"]})
         report["usage"] = usage
         report["usage_total"] = {k: sum(u["usage"].get(k, 0) for u in usage)
                                  for k in ("input_tokens", "output_tokens",
                                            "cache_creation_input_tokens", "cache_read_input_tokens")}
-        if not any(u["cwd_is_ws"] and u["model_ok"] and u["cwd"].startswith(root + "/") for u in usage):
+        if not any(u["model_ok"] and (tool == "ycode" or (u["cwd_is_ws"] and u["cwd"].startswith(root + "/"))) for u in usage):
             report["failures"].append("no attributable usage (arm transcript with token usage in the arm workspace)")
-        report["requests"] = len({u["request"] for u in usage if u["request"]})
+        report["requests"] = request_count
+        if tool == "ycode" and request_count != 1:
+            report["failures"].append(f"ycode provider requests {request_count}, expected exactly one")
         # Not scoring evidence (a screen is not a usage record), but kept so an
         # arm whose transcript never reached disk is still diagnosable.
         plain = re.sub(r"\x1b\[[0-9;?>]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)", "", screen)
@@ -536,6 +619,7 @@ def main(argv=None) -> int:
     ap.add_argument("--max-5h", type=int, default=80)
     ap.add_argument("--max-week", type=int, default=90)
     ap.add_argument("--skip-canary", action="store_true", help="tests only: skip the zero-model canary")
+    ap.add_argument("--spend-ceiling", type=float, default=0.50)
     args = ap.parse_args(argv)
     args.bashy = os.path.abspath(args.bashy)
     args.vendor_comm = args.vendor_comm or [args.tool or "claude"]

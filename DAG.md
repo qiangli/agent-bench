@@ -236,14 +236,13 @@ for i in $(seq 1 "$K"); do
   #   SKILL=on     prose skill folder: `skill export --repo` (default).
   #   SKILL=yaml   single-record YAML skill: `skill export --to
   #                $ws/.agents/skills --yaml` (writes bashy.yaml).
-  #   SKILL=script script-format help, NO prose export (BASHY_HELP_FORMAT=script
-  #                alone still exports prose, so this arm must not export; the
-  #                env marker is the grader's attribution signal).
+  #   SKILL=script task-specific AGENTS.md command recipe, NO prose export;
+  #                BASHY_HELP_FORMAT=script marks the transcript format.
   # Unknown values, and an export that writes nothing (a tool with no
   # integration: block), fail loudly rather than run or mislabel an arm.
   helpfmt=()
   if [ "$PACK" = skill-uptake ]; then
-    hf=$("${guard[@]}" env "${armenv[@]}" python3 scripts/skill_arm.py --workspace "$ws" --tool "$tool" --arm "${SKILL:-on}") \
+    hf=$("${guard[@]}" env "${armenv[@]}" python3 scripts/skill_arm.py --workspace "$ws" --tool "$tool" --arm "${SKILL:-on}" --task "$TASK") \
       || { echo "SKILL EXPORT FAILED $AGENT $TASK#$i (arm ${SKILL:-on})" >&2; armdone; rm -rf "$ws"; exit 1; }
     while IFS= read -r l; do [ -n "$l" ] && helpfmt+=("$l"); done <<< "$hf"
   fi

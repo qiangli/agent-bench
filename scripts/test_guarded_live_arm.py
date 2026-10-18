@@ -9,6 +9,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent))
 import arm_home
@@ -119,6 +121,57 @@ class WrapperParsingTest(unittest.TestCase):
         self.assertIn("cap", g.quota_ok(dict(ok, week={"status": "ok", "used_percent": 95}), 80, 90))
         self.assertIn("no measured 5h", g.quota_ok({"week": ok["week"]}, 80, 90))
         self.assertIn("not ok", g.quota_ok(dict(ok, **{"5h": {"status": "ok", "used_percent": 3, "stale": True}}), 80, 90))
+
+    def test_kimi_balance_gate(self):
+        row = {"status": "ok", "stale": False, "classification": "measured",
+               "balance_unit": "USD", "balance": 19.04183}
+        self.assertIsNone(g.balance_ok(row, 0.50))
+        self.assertIn("below", g.balance_ok(dict(row, balance=0.20), 0.50))
+        self.assertIn("no fresh", g.balance_ok(dict(row, stale=True), 0.50))
+
+    def test_ycode_receipt_counts_requests_and_exact_tokens(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp, ".bashy", "ycode", "harness")
+            (root / "sessions").mkdir(parents=True)
+            (root / "payloads").mkdir()
+            ref = "sha256:" + "a" * 64
+            messages = [{"role": "user", "content": []},
+                        {"role": "assistant", "model": "kimi-k2.6",
+                         "usage": {"input_tokens": 12, "output_tokens": 4}}]
+            (root / "payloads" / ("a" * 64)).write_text(json.dumps(messages))
+            events = [{"session_id": "s1", "type": "llm.requested"},
+                      {"session_id": "s1", "type": "session.turn-committed",
+                       "data": {"messages_ref": ref}}]
+            (root / "sessions" / "events.jsonl").write_text("\n".join(map(json.dumps, events)))
+            usage, requests = g.ycode_receipt(tmp, "kimi-k2.6")
+            self.assertEqual(requests, 1)
+            self.assertEqual(usage[0]["usage"], {"input_tokens": 12, "output_tokens": 4})
+            self.assertTrue(usage[0]["model_ok"])
+            events.insert(1, {"session_id": "s1", "type": "llm.requested"})
+            (root / "sessions" / "events.jsonl").write_text("\n".join(map(json.dumps, events)))
+            self.assertEqual(g.ycode_receipt(tmp, "kimi-k2.6")[1], 2)
+            events.append({"session_id": "other", "type": "llm.requested"})
+            (root / "sessions" / "events.jsonl").write_text("\n".join(map(json.dumps, events)))
+            with self.assertRaisesRegex(ValueError, "one isolated"):
+                g.ycode_receipt(tmp, "kimi-k2.6")
+
+    def test_ycode_preflight_refuses_before_dispatch(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            args = SimpleNamespace(evidence=tmp, agent="ycode-kimi-k2.6", pack="skill-uptake",
+                                   task="t6-pdf-fact", skill="script", bashy="/bin/bashy",
+                                   tool="ycode", model="kimi-k2.6", quota_label="kimi",
+                                   spend_ceiling=0.50)
+            row = {"label": "kimi", "status": "ok", "stale": False,
+                   "classification": "measured", "balance_unit": "USD", "balance": 19.04183}
+            with mock.patch.object(g.sys, "platform", "darwin"), \
+                 mock.patch.object(g.shutil, "which", return_value="/usr/bin/sandbox-exec"), \
+                 mock.patch.object(g, "balance", return_value=(row, json.dumps({"items": [row]}))), \
+                 mock.patch.object(g.subprocess, "Popen") as launch:
+                self.assertEqual(g.run(args), 2)
+                launch.assert_not_called()
+            report = json.loads(Path(tmp, "report.json").read_text())
+            self.assertEqual(report["verdict"], "REFUSED")
+            self.assertIn("zero requests", report["failures"][-1])
 
     def test_profile_denies_homes_decoy_and_keychain_cli(self):
         p = g.guard_profile(["/Users/op"], "/private/tmp/d")

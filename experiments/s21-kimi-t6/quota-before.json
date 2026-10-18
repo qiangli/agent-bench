@@ -1,0 +1,24 @@
+{
+  "schema_version": "bashy-registry-list-v1",
+  "kind": "quota",
+  "view": "default",
+  "items": [
+    {
+      "account": "moonshot",
+      "label": "kimi",
+      "configured": true,
+      "provider": "openai-compat",
+      "lane": "api-key",
+      "balance": 19.04183,
+      "balance_unit": "USD",
+      "source": "probe:model:kimi-k2.6/balance",
+      "observed_at": "2026-10-18T15:51:41.608923-07:00",
+      "status": "ok",
+      "predict": "learning",
+      "headroom": null,
+      "stale": false,
+      "suggested_workers": null,
+      "classification": "measured"
+    }
+  ]
+}

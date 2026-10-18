@@ -55,10 +55,20 @@ class SkillArmTest(unittest.TestCase):
         self.assertEqual(skill_arm.select(str(self.ws), "agy", "off"), [])
         self.assertEqual(self.commits(), ["fixture"])
 
-    def test_script_sets_env_marker_and_exports_nothing(self):
-        self.assertEqual(skill_arm.select(str(self.ws), "agy", "script"), ["BASHY_HELP_FORMAT=script"])
-        self.assertEqual(self.commits(), ["fixture"])
+    def test_script_delivers_recipe_without_prose_export(self):
+        self.assertEqual(skill_arm.select(str(self.ws), "agy", "script", task="t6-pdf-fact"), ["BASHY_HELP_FORMAT=script"])
+        self.assertEqual(self.commits(), ["skill-script", "fixture"])
         self.assertFalse((self.ws / ".agents").exists())
+        self.assertIn("bashy lens -t md invoice.pdf", (self.ws / "AGENTS.md").read_text())
+        self.assertNotIn("2026-11-14", (self.ws / "AGENTS.md").read_text())
+
+    def test_script_refuses_unknown_task_and_existing_instructions(self):
+        with self.assertRaisesRegex(skill_arm.ArmError, "no script recipe"):
+            skill_arm.select(str(self.ws), "agy", "script", task="t7-json-yaml")
+        (self.ws / "AGENTS.md").write_text("keep me\n")
+        with self.assertRaisesRegex(skill_arm.ArmError, "overwrite"):
+            skill_arm.select(str(self.ws), "agy", "script", task="t6-pdf-fact")
+        self.assertEqual((self.ws / "AGENTS.md").read_text(), "keep me\n")
 
     def test_unknown_arm_fails_loudly(self):
         with self.assertRaises(skill_arm.ArmError):
@@ -72,6 +82,12 @@ class SkillArmTest(unittest.TestCase):
         self.assertTrue((self.ws / ".agents" / "skills" / "bashy").is_dir())
         # bashy kept its own state in the arm HOME, not the operator's.
         self.assertTrue((Path(self.env["HOME"]) / ".bashy").is_dir())
+
+    @unittest.skipUnless(HAVE_BASHY, "bashy not on PATH")
+    def test_ycode_on_exports_prose_and_instructions(self):
+        self.assertEqual(skill_arm.select(str(self.ws), "ycode", "on"), [])
+        self.assertTrue((self.ws / ".agents" / "skills" / "bashy" / "SKILL.md").is_file())
+        self.assertIn("bashy:skill:bashy:begin", (self.ws / "AGENTS.md").read_text())
 
     @unittest.skipUnless(HAVE_BASHY, "bashy not on PATH")
     def test_yaml_exports_single_record(self):

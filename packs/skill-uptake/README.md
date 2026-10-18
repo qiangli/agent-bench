@@ -102,8 +102,10 @@ integration (add an integration: block to its definition)`.
 Same t6/t7 graders, four arms via `SKILL=` (`DAG.md run` block):
 `off` (no export), `on` (prose folder via `skill export --repo`),
 `yaml` (single record via `skill export --to $ws/.agents/skills --yaml`),
-`script` (no export + `BASHY_HELP_FORMAT=script` in the launch env —
-setting the env var alone still exports prose, so the arm must not export).
+`script` (no prose export; a t6 command recipe is committed as `AGENTS.md`
+inside the arm workspace, and `BASHY_HELP_FORMAT=script` marks the launch env).
+Unsupported script tasks refuse before agent launch. Setting the env var
+alone does not deliver a recipe.
 Grader `format_use` attribution (`grader_lib.analyze_discovery`): `script`
 for the env marker, `yaml` for `bashy.yaml`/`--yaml`, else `skill`/`mcp`/
 `classic`/`none` as before. Existing off/on scores stay separate arms.

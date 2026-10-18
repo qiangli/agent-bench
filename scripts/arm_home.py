@@ -75,7 +75,7 @@ TOOL_SEEDS["gemini"] = TOOL_SEEDS["agy"]
 EVIDENCE = [
     ".bashy/sessions", ".bashy/room", ".bashy/exec", ".bashy/quota", ".claude/projects", ".codex/sessions",
     ".gemini/tmp", ".gemini/antigravity-cli/conversations", ".gemini/antigravity-cli/log",
-    ".local/share/opencode/log",
+    ".local/share/opencode/log", ".bashy/ycode/harness/sessions", ".bashy/ycode/harness/payloads",
 ]
 
 
