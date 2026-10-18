@@ -1,6 +1,6 @@
 # Sprint 446 / Story 2140: Kimi t6 script versus prose
 
-Base: published agent-bench `a2f8b5a`. Holder: `codex-gpt6-sol`.
+Base: published agent-bench `60cba892c4a4a25b94ff739b7804ad11027f5c8d` after rebase. Holder: `codex-gpt6-sol`.
 Task and grader: unchanged `skill-uptake/t6-pdf-fact` fixture and grader.
 
 ## Scope and corrected run limit
@@ -48,3 +48,32 @@ The attempted arm reached a real-HOME write-deny violation before any provider
 request. A future run needs the Go cache redirected into the isolated HOME and
 must distinguish the guarded ycode process from unguarded harness ancestors in
 the containment check. Neither change was used to rerun this pair.
+
+## S21 continuation after review
+
+The Go build cache is now set to each arm's isolated HOME, and the watcher
+separates unguarded DAG wrappers from guarded descendants. The focused
+zero-model suite passed (51 tests, two skips). The real-HOME deny canary passed
+again, and guarded preflight accepted both script and prose selectors. Kimi
+fleet auth and the native USD 3 route budget passed before dispatch.
+
+One additional `SKILL=script` CLI arm ran with `BUDGET=100`, `QUIET=20`,
+`ATTEMPTS=1`, and a three-minute CLI wall limit. It produced a task score of
+**1** (PDF due date correct), with **11** internal ycode provider requests.
+The isolated receipt recorded **12,908 input**, **1,269 output**, and **9,216
+cache-read input** tokens (zero cache-creation input tokens). Measured Kimi
+balance was **USD 19.04183** before and after, so the observed delta was
+**USD 0.00**; the receipts were observed at 16:06:47 and 16:08:25 PDT.
+This balance delta is the observed provider receipt, not a claim that those
+tokens were free or that billing will never update.
+
+The driver returned `FAIL` because its environment check included three
+sandboxed Bashy helper commands (`dag package`, `kb context`, `contain`) as
+vendor processes. Their short-lived environment snapshots lacked some path
+variables. The actual ycode launch records had isolated HOME,
+CLAUDE_CONFIG_DIR, and GOCACHE paths. Both real-HOME negative controls passed;
+there were no real-HOME changes or sandbox denials. The process classifier has
+an offline regression fix, but this arm was **not rerun**. Because the driver
+reported a guard failure, no prose arm was launched. The pair remains open
+and cannot support a format comparison. `retry-summary.json` is the sanitized
+receipt; raw arm data stays outside the repository.

@@ -167,12 +167,18 @@ def quota_ok(rows: dict, max_5h: int, max_week: int) -> str | None:
 SKILL_MD = ".claude/skills/bashy/SKILL.md"  # skill_arm.PROJECT_SKILL_ROOTS["claude"]
 
 
+def skill_artifact(tool: str, arm: str) -> str:
+    if arm == "script":
+        return "AGENTS.md"
+    return SKILL_MD if tool == "claude" else ".agents/skills/bashy/SKILL.md"
+
+
 def _sha(path: str) -> str | None:
     import hashlib
     return hashlib.sha256(open(path, "rb").read()).hexdigest() if os.path.isfile(path) else None
 
 
-def skill_preflight(bashy: str, sb: str, root: str, tool: str, arm: str) -> dict:
+def skill_preflight(bashy: str, sb: str, root: str, tool: str, arm: str, task: str | None = None) -> dict:
     """Zero-model rehearsal of the DAG's skill export under the same guard and a
     tool-less isolated env: the on arm must produce the SKILL.md the vendor
     reads, the off arm must not. Returns its sha so the real arm can be matched."""
@@ -193,12 +199,13 @@ def skill_preflight(bashy: str, sb: str, root: str, tool: str, arm: str) -> dict
     env = dict(os.environ, PATH=os.path.dirname(bashy) + os.pathsep + os.environ.get("PATH", ""))
     env.update(l.split("=", 1) for l in prep.stdout.splitlines() if "=" in l)
     r = subprocess.run(["sandbox-exec", "-f", sb, sys.executable, os.path.join(REPO, "scripts", "skill_arm.py"),
-                        "--workspace", ws, "--tool", tool, "--arm", arm],
+                        "--workspace", ws, "--tool", tool, "--arm", arm,
+                        *(["--task", task] if task else [])],
                        env=env, capture_output=True, text=True, timeout=120)
-    sha = _sha(os.path.join(ws, SKILL_MD))
+    sha = _sha(os.path.join(ws, skill_artifact(tool, arm)))
     out.update(rc=r.returncode, killed=r.returncode in KILLED, skill_md=sha is not None, skill_sha256=sha,
                stderr=r.stderr.strip()[:300])
-    out["ok"] = r.returncode == 0 and (sha is not None) == (arm == "on")
+    out["ok"] = r.returncode == 0 and (sha is not None) == (arm in ("on", "script"))
     shutil.rmtree(scratch, ignore_errors=True)
     return out
 
@@ -290,7 +297,7 @@ class VendorWatch(canary.Tree):
                     self.processes[pid] = {"pid": pid, "ppid": ppid,
                                            "comm": command.split()[0], "command": command,
                                            "sandboxed": state,
-                                           **(proc_env(pid, ("HOME", "CLAUDE_CONFIG_DIR"))
+                                           **(proc_env(pid, ("HOME", "CLAUDE_CONFIG_DIR", "GOCACHE"))
                                               if os.path.basename(command.split()[0]) in self.comms else {})}
 
 
@@ -309,20 +316,25 @@ def classify_vendor_processes(processes: dict[int, dict], runner_pid: int,
             if row["sandboxed"] == 1 or row["ppid"] in guarded:
                 guarded.add(pid)
         pending -= ready
-    def escaped_vendor(row: dict) -> bool:
-        command = row.get("command", "")
-        words = command.split()
+    def vendor_launch(row: dict) -> bool:
+        words = row.get("command", "").split()
         name = os.path.basename(row["comm"])
-        return (name in vendor_comms and
-                (name != "bashy" or (len(words) > 1 and words[1] in {"chat", "ycode"})))
+        if name not in vendor_comms:
+            return False
+        if name != "bashy":
+            return True
+        return (len(words) > 1 and
+                (words[1] in {"chat", "ycode", "cmd/genie/main.go"}
+                 or words[1:4] == ["run", "--target", "chat"]
+                 or (words[1] == "dag" and "chat" in words[2:])))
 
     wrappers = [row for pid, row in processes.items()
-                if pid != runner_pid and pid not in guarded and not escaped_vendor(row)]
+                if pid != runner_pid and pid not in guarded and not vendor_launch(row)]
     # Bashy DAG wrappers can spawn preflight helpers beside the guarded arm.
     # A vendor CLI or bashy chat launched in that branch remains a failure.
     descendants = [row for pid, row in processes.items()
-                   if pid != runner_pid and (pid in guarded or escaped_vendor(row))]
-    vendors = [row for row in descendants if os.path.basename(row["comm"]) in vendor_comms]
+                   if pid != runner_pid and (pid in guarded or vendor_launch(row))]
+    vendors = [row for row in descendants if vendor_launch(row)]
     return wrappers, descendants, vendors
 
 
@@ -498,7 +510,7 @@ def run(args) -> int:
             if cb["verdict"] != "PASS":
                 report["failures"].append(f"zero-model real-HOME canary failed before the request: {cb['failures']}")
                 return save(2)
-        report["skill_preflight"] = sp = skill_preflight(args.bashy, sb, root, tool, args.skill)
+        report["skill_preflight"] = sp = skill_preflight(args.bashy, sb, root, tool, args.skill, args.task)
         if not sp["ok"]:
             report["failures"].append(f"skill {args.skill} export preflight failed: {sp}")
             return save(2)
@@ -576,8 +588,9 @@ def run(args) -> int:
             report["failures"].append(f"no {sorted(watch.comms)} process seen under the runner (not launched?)")
         if not all(v["sandboxed"] == 1 for v in descendants):
             report["failures"].append("process below guarded arm escaped sandbox")
+        keys = ("HOME", "CLAUDE_CONFIG_DIR", "GOCACHE") if tool == "ycode" else ("HOME", "CLAUDE_CONFIG_DIR")
         iso = [v for v in vendors if not all(v.get(k) and os.path.realpath(v[k]).startswith(root + "/")
-                                               for k in ("HOME", "CLAUDE_CONFIG_DIR"))]
+                                               for k in keys)]
         if iso:
             report["failures"].append(f"vendor process without an isolated HOME/CLAUDE_CONFIG_DIR: {iso}")
 
@@ -604,10 +617,10 @@ def run(args) -> int:
         report["result"] = row
 
         # The skill the vendor actually saw: the graded workspace copy.
-        got = _sha(os.path.join(ev, "workspace", SKILL_MD))
+        got = _sha(os.path.join(ev, "workspace", skill_artifact(tool, args.skill)))
         report["workspace_skill"] = {"skill_md": got is not None, "skill_sha256": got,
                                      "matches_preflight": got == sp.get("skill_sha256")}
-        if os.path.isdir(os.path.join(ev, "workspace")) and ((got is not None) != (args.skill == "on")
+        if os.path.isdir(os.path.join(ev, "workspace")) and ((got is not None) != (args.skill in ("on", "script"))
                                                               or got != sp.get("skill_sha256")):
             report["failures"].append(f"arm workspace skill does not match SKILL={args.skill}: {report['workspace_skill']}")
         session = open(rec + ".session.log", errors="replace").read() if os.path.isfile(rec + ".session.log") else ""

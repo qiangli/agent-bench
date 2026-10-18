@@ -1,0 +1,39 @@
+{
+  "verdict": "STOPPED_AFTER_SCRIPT_GUARD_REPORT",
+  "script_cli_invocations_this_continuation": 1,
+  "prose_cli_invocations_this_continuation": 0,
+  "prose_score": "unmeasured",
+  "script_driver_verdict": "FAIL",
+  "script_score": {
+    "points": 1,
+    "fail": false,
+    "result_ok": true,
+    "discovery": 0,
+    "format_use": "none",
+    "why": "PDF due date correct",
+    "ended": "idle",
+    "secs": 98
+  },
+  "script_dag_rc": 0,
+  "script_wall_s": 131.5,
+  "ycode_internal_provider_requests": 11,
+  "usage_total": {
+    "input_tokens": 12908,
+    "output_tokens": 1269,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 9216
+  },
+  "balance_before_usd": 19.04183,
+  "balance_before_observed_at": "2026-10-18T16:06:47.427601-07:00",
+  "balance_after_usd": 19.04183,
+  "balance_after_observed_at": "2026-10-18T16:08:25.013334-07:00",
+  "balance_delta_usd": 0.0,
+  "native_route_budget_usd": 3.0,
+  "real_home_changed": [],
+  "sandbox_denials": [],
+  "negative_control_before_ok": true,
+  "negative_control_after_ok": true,
+  "zero_model_canary_before": "PASS",
+  "driver_failure": "vendor process environment check included guarded Bashy helpers (dag package, kb context, contain); actual ycode launch records had isolated HOME, CLAUDE_CONFIG_DIR and GOCACHE",
+  "next_arm_blocked_by": "script driver returned FAIL; no rerun or prose request authorized after guard failure"
+}

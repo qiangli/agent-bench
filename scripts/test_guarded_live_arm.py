@@ -81,8 +81,8 @@ class WrapperParsingTest(unittest.TestCase):
         rows = {
             10: {"pid": 10, "ppid": 1, "comm": "bashy", "sandboxed": 0},
             11: {"pid": 11, "ppid": 10, "comm": "bashy", "sandboxed": 0},
-            12: {"pid": 12, "ppid": 11, "comm": "bashy", "sandboxed": 1},
-            13: {"pid": 13, "ppid": 12, "comm": "bashy", "sandboxed": 1},
+            12: {"pid": 12, "ppid": 11, "comm": "bashy", "command": "bashy chat --agent ycode-kimi-k2.6", "sandboxed": 1},
+            13: {"pid": 13, "ppid": 12, "comm": "bashy", "command": "bashy ycode -m kimi-k2.6", "sandboxed": 1},
             14: {"pid": 14, "ppid": 13, "comm": "go", "sandboxed": 0},
             15: {"pid": 15, "ppid": 11, "comm": "bashy", "command": "bashy chat run", "sandboxed": 0},
             16: {"pid": 16, "ppid": 11, "comm": "bashy", "command": "bashy agent show", "sandboxed": 0},
@@ -92,6 +92,18 @@ class WrapperParsingTest(unittest.TestCase):
         self.assertEqual({r["pid"] for r in descendants}, {12, 13, 14, 15})
         self.assertEqual({r["pid"] for r in vendors}, {12, 13, 15})
         self.assertFalse(all(r["sandboxed"] == 1 for r in descendants))
+
+    def test_guarded_helpers_do_not_need_vendor_environment(self):
+        rows = {
+            1: {"pid": 1, "ppid": 0, "comm": "bashy", "sandboxed": 0},
+            2: {"pid": 2, "ppid": 1, "comm": "bashy", "command": "bashy chat --agent ycode-kimi-k2.6", "sandboxed": 1,
+                "HOME": "/tmp/arm", "CLAUDE_CONFIG_DIR": "/tmp/arm/.claude", "GOCACHE": "/tmp/arm/.cache/go-build"},
+            3: {"pid": 3, "ppid": 2, "comm": "bashy", "command": "bashy kb context --json", "sandboxed": 1},
+            4: {"pid": 4, "ppid": 2, "comm": "bashy", "command": "bashy dag -f dag.md package", "sandboxed": 1},
+        }
+        _, descendants, vendors = g.classify_vendor_processes(rows, 1, {"bashy"})
+        self.assertEqual({r["pid"] for r in descendants}, {2, 3, 4})
+        self.assertEqual([r["pid"] for r in vendors], [2])
 
     def test_tree_denials(self):
         home = "/Users/op"
