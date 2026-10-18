@@ -40,6 +40,23 @@ class Helpers(unittest.TestCase):
             self.assertTrue(env[key] == "/real" or env[key].startswith("/real/"), key)
         self.assertIn("CLAUDE_CONFIG_DIR", env)
         self.assertIn("BASHY_HOME", env)
+        for key in ("BASHY_ACTIVITY_DIR", "BASHY_FLEET_DIR"):
+            self.assertEqual(env[key], os.path.join("/real", ".bashy", key[6:-4].lower()))
+
+    def test_arm_overlay_clears_every_poisoned_bashy_dir(self):
+        """The poisoned per-store BASHY_*_DIR keys must not survive the overlay
+        built the way the canary (and DAG.md) builds it."""
+        real = os.path.join(self.tmp, "real")
+        os.makedirs(real)
+        base = canary.poisoned_env({"HOME": real}, real)
+        armenv = arm_home.prepare(os.path.join(self.tmp, "arm"), "benchbot",
+                                  source_home=real, protected=[real])
+        cleared = arm_home.clear_inherited(base, armenv)
+        for key in ("BASHY_MB_DIR", "BASHY_SPRINT_DIR", "BASHY_ACTIVITY_DIR", "BASHY_FLEET_DIR"):
+            self.assertEqual(cleared.get(key), "", key)
+        env = arm_home.arm_environ(base, armenv, [real])
+        for key in ("BASHY_MB_DIR", "BASHY_SPRINT_DIR", "BASHY_ACTIVITY_DIR", "BASHY_FLEET_DIR"):
+            self.assertEqual(env.get(key), "", key)
 
     def test_profile_denies_writes_to_every_home_with_kill(self):
         sb = canary.profile(["/a", "/b c"])
@@ -141,7 +158,7 @@ class RealBinary(unittest.TestCase):
         self.assertEqual(report["sandbox_denials"], [])
         for key in ("CLAUDE_CONFIG_DIR", "BASHY_HOME", "CODEX_HOME", "XDG_CONFIG_HOME"):
             self.assertTrue(report["arm_env"][key].startswith(os.path.dirname(report["arm_home"])), key)
-        for key in ("BASHY_MB_DIR", "BASHY_SPRINT_DIR"):
+        for key in ("BASHY_MB_DIR", "BASHY_SPRINT_DIR", "BASHY_ACTIVITY_DIR", "BASHY_FLEET_DIR"):
             self.assertEqual(report["arm_env"][key], "")
         self.assertIn("benchbot: steer received", report["benchbot_commits"])
 

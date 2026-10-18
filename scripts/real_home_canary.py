@@ -7,7 +7,7 @@ env to every command; it cannot prove that the bashy binary itself honours it.
 This canary runs the candidate `bashy` (first on PATH, or --bashy) for real:
 
   * The inherited env is poisoned: CLAUDE_CONFIG_DIR, BASHY_HOME,
-    BASHY_MB_DIR, BASHY_SPRINT_DIR, CODEX_HOME, XDG_*, GEMINI_CLI_HOME and
+    BASHY_MB_DIR, BASHY_SPRINT_DIR, BASHY_ACTIVITY_DIR, BASHY_FLEET_DIR, CODEX_HOME, XDG_*, GEMINI_CLI_HOME and
     OPENCODE_CONFIG_DIR all point into the real HOME; `arm_home.py prepare`
     builds the arm env on top of it, exactly as DAG.md does.
   * Write-deny guard: every arm command runs under macOS sandbox-exec with
@@ -64,14 +64,15 @@ TASK = os.path.join(REPO, "packs", "steer", "t1-pivot")
 # finds in the arm HOME. Directories are fingerprinted one level deep.
 CLAUDE_FILES = (".claude.json", ".claude/settings.json", ".claude/.credentials.json")
 BASHY_STORES = (".bashy/sessions", ".bashy/sessions/logs", ".bashy/todo", ".bashy/mb",
-                ".bashy/sprint", ".bashy/skills/probecache.json", ".bashy/coord/claims.lock",
+                ".bashy/sprint", ".bashy/activity", ".bashy/fleet", ".bashy/skills/probecache.json", ".bashy/coord/claims.lock",
                 ".bashy/room/member-claims.lock", ".bashy/room/.timeline.lock")
 # Arm-HOME paths that prove bashy session state works under isolation.
 ARM_STATE = (".bashy/room/timeline.jsonl", ".bashy/exec")
 
 POISON_KEYS = {
     "CLAUDE_CONFIG_DIR": ".claude", "BASHY_HOME": ".bashy", "BASHY_MB_DIR": ".bashy/mb",
-    "BASHY_SPRINT_DIR": ".bashy/sprint", "CODEX_HOME": ".codex", "XDG_CONFIG_HOME": ".config",
+    "BASHY_SPRINT_DIR": ".bashy/sprint", "BASHY_ACTIVITY_DIR": ".bashy/activity",
+    "BASHY_FLEET_DIR": ".bashy/fleet", "CODEX_HOME": ".codex", "XDG_CONFIG_HOME": ".config",
     "XDG_DATA_HOME": ".local/share", "XDG_STATE_HOME": ".local/state",
     "GEMINI_CLI_HOME": "", "OPENCODE_CONFIG_DIR": ".config/opencode",
 }
