@@ -70,3 +70,18 @@ quota endpoint returned 502, and its 5h cached row was stale. The runner
 refused the YAML arm and skipped prose. Both attempts are **UNSCORED** with
 zero vendor requests and no score or measured delta. The canonical fallback
 remains. `read-only-seat-followup-summary.json` is the sanitized receipt.
+
+## Fresh-quota guarded pair
+
+After a fresh measured Claude quota read (5h 0%, week 40%), the same candidate
+and task completed a guarded `yaml,on` pair with a 100-second arm budget and a
+20-second quiet period. The quota refresh inside the runner returned 502, so
+the runner used those measured, nonstale rows. The zero-model canary and
+negative controls passed. Both arms passed the task with score 1 and four
+attributable provider requests each; neither had a sandbox denial or a
+protected real-HOME change. No skill discovery or format use was observed.
+
+The measured score difference (YAML minus on) is 0. This pair supports no
+default-delivery change, so the canonical fallback remains. The sanitized
+receipt is `fresh-quota-pair-summary.json`; raw guarded evidence is outside
+the repository at `/tmp/s446-s21-yaml-fresh-1836`.
