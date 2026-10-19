@@ -453,6 +453,53 @@ class PairTest(unittest.TestCase):
                 self.assertEqual(calls[0][calls[0].index(flag) + 1], calls[1][calls[1].index(flag) + 1])
             self.assertEqual(g.skill_artifact("ycode", "yaml"), ".agents/skills/bashy.yaml")
 
+    def test_reader_view_pair_changes_only_view_and_keeps_prose_skill(self):
+        import guarded_pair as gp
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            args = self.args(tmp)
+            args.task = "t7-json-yaml"
+            args.view_order = ["yaml", "json"]
+            calls = []
+
+            def fake(argv):
+                calls.append(argv)
+                ev = argv[argv.index("--evidence") + 1]
+                os.makedirs(ev, exist_ok=True)
+                Path(ev, "report.json").write_text(json.dumps({
+                    "verdict": "PASS", "workspace_skill": {"skill_sha256": "same-prose-artifact"}}))
+                return 0
+
+            out = gp.pair(args, fake)
+            self.assertEqual(out["verdict"], "PAIRED")
+            self.assertEqual([a["reader_view"] for a in out["arms"]], ["yaml", "json"])
+            self.assertEqual([c[c.index("--skill") + 1] for c in calls], ["on", "on"])
+            self.assertEqual([c[c.index("--reader-view") + 1] for c in calls], ["yaml", "json"])
+            drop = lambda c: [v for i, v in enumerate(c) if c[i-1] not in ("--evidence", "--reader-view")
+                              and v not in ("--evidence", "--reader-view")]
+            self.assertEqual(drop(calls[0]), drop(calls[1]))
+            self.assertEqual(out["arms"][0]["workspace_skill"], out["arms"][1]["workspace_skill"])
+
+    def test_reader_view_reaches_chat_launch_after_identical_skill_export(self):
+        dag = (REPO / "DAG.md").read_text().split("### run", 1)[1]
+        export = dag.index("scripts/skill_arm.py --workspace")
+        profile = dag.index('viewenv=("BASHY_PREFS=')
+        launch = dag.index('"${viewenv[@]}" BENCH_REF=')
+        self.assertLess(export, profile)
+        self.assertLess(profile, launch)
+        self.assertIn('yaml|json)', dag)
+
+    def test_cli_accepts_config_view_pair_and_rejects_other_task(self):
+        import guarded_pair as gp
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp, mock.patch.object(gp, "pair") as paired:
+            paired.return_value = {"verdict": "UNSCORED", "arms": []}
+            argv = ["--agent", "a", "--task", "t7-json-yaml", "--model", "m",
+                    "--evidence", tmp, "--bashy", "/x/bashy", "--view-order", "yaml,json"]
+            self.assertEqual(gp.main(argv), 1)
+            self.assertEqual(paired.call_args.args[0].view_order, ["yaml", "json"])
+            with self.assertRaises(SystemExit):
+                gp.main(["--agent", "a", "--task", "t6-pdf-fact", "--model", "m",
+                         "--evidence", tmp, "--bashy", "/x/bashy", "--view-order", "yaml,json"])
+
     def test_cli_accepts_yaml_on_order(self):
         import guarded_pair as gp
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp, mock.patch.object(gp, "pair") as paired:

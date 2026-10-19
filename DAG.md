@@ -247,6 +247,15 @@ for i in $(seq 1 "$K"); do
     while IFS= read -r l; do [ -n "$l" ] && helpfmt+=("$l"); done <<< "$hf"
   fi
 
+  # S21 config comparison: both arms keep the same skill artifact. Only the
+  # reader's sink view changes, via the declared launcher preference.
+  viewenv=()
+  case ${READER_VIEW:-} in
+    '') ;;
+    yaml|json) viewenv=("BASHY_PREFS={\"view\":\"$READER_VIEW\"}") ;;
+    *) echo "INVALID READER_VIEW $READER_VIEW" >&2; armdone; rm -rf "$ws"; exit 1 ;;
+  esac
+
   # A task with setup.py is seeded into an isolated store beside the workspace;
   # the agent is launched with that store's environment (see packs/floor/inbox-find).
   iso=$("${guard[@]}" env "${armenv[@]}" python3 scripts/pack_runner.py isolate --pack "$PACK" --task "$TASK" --workspace "$ws" --agent "$AGENT") \
@@ -255,7 +264,7 @@ for i in $(seq 1 "$K"); do
 
   # Only the zero-quota dry-run agent may see the reference solution.
   ref=; [ "$AGENT" = benchbot-dry ] && ref=$pack/reference
-  "${guard[@]}" env "${armenv[@]}" "${isoenv[@]}" "${helpfmt[@]}" BENCH_REF=$ref BASHY_CHAT_INBOX=off ENABLE_CLAUDEAI_MCP_SERVERS=false BASHY_ALLOW_UNSAFE_AGENT_LAUNCH=1 \
+  "${guard[@]}" env "${armenv[@]}" "${isoenv[@]}" "${helpfmt[@]}" "${viewenv[@]}" BENCH_REF=$ref BASHY_CHAT_INBOX=off ENABLE_CLAUDEAI_MCP_SERVERS=false BASHY_ALLOW_UNSAFE_AGENT_LAUNCH=1 \
     bashy chat --agent "$AGENT" -i --yolo -m "Read TASK.md and do the task." \
       --cwd "$ws" --task "bench-$TASK-$i" --timeout "$((BUDGET + 60))s" \
       > "$rec.session.log" 2>&1 &

@@ -532,6 +532,7 @@ def run(args) -> int:
     ev = os.path.abspath(args.evidence)
     os.makedirs(ev, exist_ok=True)
     report: dict = {"agent": args.agent, "pack": args.pack, "task": args.task, "skill": args.skill,
+                    "reader_view": getattr(args, "reader_view", None),
                     "bashy": args.bashy, "started": datetime.datetime.now().astimezone().isoformat(),
                     "verdict": "REFUSED", "failures": []}
 
@@ -620,10 +621,13 @@ def run(args) -> int:
 
         env = dict(os.environ, PATH=os.path.dirname(candidate) + os.pathsep + os.environ.get("PATH", ""),
                    BENCH_GUARD=sb, BENCH_ARM_ROOT=root, TMPDIR=root, PYTHONDONTWRITEBYTECODE="1",
+                   READER_VIEW=getattr(args, "reader_view", None) or "",
                    BENCH_CLAUDE_KEYCHAIN="1" if tool == "claude" else "")
         argv = [candidate, "dag", "run", f"AGENT={args.agent}", f"PACK={args.pack}", f"TASK={args.task}",
                 f"RUNS={runs}", "K=1", "ATTEMPTS=1", f"SKILL={args.skill}", f"BUDGET={args.budget}",
                 f"QUIET={args.quiet}", f"THINK={args.quiet * 3}", f"MIN_POST_STEER={args.quiet}"]
+        if getattr(args, "reader_view", None):
+            argv.append(f"READER_VIEW={args.reader_view}")
         report["dag_argv"] = argv
         watch = VendorWatch()
         watch.comms = set(args.vendor_comm)
@@ -808,6 +812,8 @@ def main(argv=None) -> int:
     ap.add_argument("--pack", default="skill-uptake")
     ap.add_argument("--task", required=True)
     ap.add_argument("--skill", default="off")
+    ap.add_argument("--reader-view", choices=("yaml", "json"),
+                    help="declared reader sink view; skill artifact is selected separately")
     ap.add_argument("--evidence", required=True)
     ap.add_argument("--bashy", default=shutil.which("bashy"))
     ap.add_argument("--tool", help="the agent's tool (default: `bashy agent show AGENT --field tool`)")

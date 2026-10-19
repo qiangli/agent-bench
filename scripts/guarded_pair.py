@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """ONE paired skill-uptake measurement: the same agent, task, model, budget and
-grader, SKILL=off, script, or yaml then SKILL=on, each arm one vendor invocation through
+grader, SKILL=off, script, or yaml then SKILL=on; or the t7 config task with
+SKILL=on in both arms and prefs.view=yaml versus json. Each arm runs through
 guarded_live_arm.py (zero-model canary, quota, guard and skill-export
 preflights before the request; quota, score, attributable usage and guard
 evidence after it).
@@ -78,6 +79,7 @@ def pair(args, run_arm=None) -> dict:
     grader = os.path.join(REPO, "packs", args.pack, args.task, "grader")
     out: dict = {"agent": args.agent, "pack": args.pack, "task": args.task, "model": args.model,
                  "budget": args.budget, "quiet": args.quiet, "bashy": args.bashy,
+                 "view_order": getattr(args, "view_order", None),
                  "grader_sha256": tree_sha(grader) if os.path.isdir(grader) else None,
                  "started": datetime.datetime.now().astimezone().isoformat(), "arms": [], "verdict": "UNSCORED"}
     ps = subprocess.run(["/bin/ps", "-axo", "pid=,command="], capture_output=True, text=True).stdout
@@ -87,14 +89,19 @@ def pair(args, run_arm=None) -> dict:
         out["failures"] = ["another bench vendor runner is live; not launching"]
         return out
     stop = None
-    for arm in args.order:
+    view_order = getattr(args, "view_order", None)
+    arms = [("on", view, f"view-{view}") for view in view_order] if view_order else [
+        (skill, None, skill) for skill in args.order]
+    for skill, view, arm in arms:
         if stop:
-            out["arms"].append({"skill": arm, "verdict": "UNSCORED", "requests": 0,
+            out["arms"].append({"skill": skill, "reader_view": view, "verdict": "UNSCORED", "requests": 0,
                                 "why": f"not run: previous arm stopped the pair ({stop})"})
             continue
-        argv = ["--agent", args.agent, "--pack", args.pack, "--task", args.task, "--skill", arm,
+        argv = ["--agent", args.agent, "--pack", args.pack, "--task", args.task, "--skill", skill,
                 "--evidence", os.path.join(ev, arm), "--bashy", args.bashy, "--budget", str(args.budget),
                 "--quiet", str(args.quiet), "--model", args.model]
+        if view:
+            argv += ["--reader-view", view]
         if getattr(args, "allow_unmeasured_bounded", False):
             argv.append("--allow-unmeasured-bounded")
         if args.tool:
@@ -106,7 +113,7 @@ def pair(args, run_arm=None) -> dict:
             rep = json.load(open(os.path.join(ev, arm, "report.json")))
         except (OSError, ValueError):
             rep = {"verdict": "UNSCORED", "failures": ["no report.json"]}
-        out["arms"].append({"skill": arm, "rc": rc, **{k: rep.get(k) for k in (
+        out["arms"].append({"skill": skill, "reader_view": view, "rc": rc, **{k: rep.get(k) for k in (
             "verdict", "score", "failures", "requests", "usage_total", "quota_before", "quota_after",
             "quota_before_read", "quota_after_read", "balance_before_usd", "balance_after_usd",
             "quota_policy",
@@ -131,6 +138,7 @@ def main(argv=None) -> int:
     ap.add_argument("--budget", type=int, default=100)
     ap.add_argument("--quiet", type=int, default=20)
     ap.add_argument("--order", default="off,on")
+    ap.add_argument("--view-order", help="compare reader prefs.view yaml,json with SKILL=on in both arms")
     ap.add_argument("--tool")
     ap.add_argument("--vendor-comm", action="append", default=[])
     ap.add_argument("--allow-unmeasured-bounded", action="store_true",
@@ -140,10 +148,16 @@ def main(argv=None) -> int:
     args.order = args.order.split(",")
     if args.order not in (["off", "on"], ["script", "on"], ["yaml", "on"]):
         ap.error("--order must be off,on, script,on, or yaml,on")
+    if args.view_order:
+        args.view_order = args.view_order.split(",")
+        if args.order != ["off", "on"] or sorted(args.view_order) != ["json", "yaml"]:
+            ap.error("--view-order requires yaml,json or json,yaml and no --order override")
+        if (args.pack, args.task) != ("skill-uptake", "t7-json-yaml"):
+            ap.error("--view-order requires the skill-uptake/t7-json-yaml config task")
     out = pair(args)
     with open(os.path.join(os.path.abspath(args.evidence), "pair.json"), "w") as fh:
         json.dump(out, fh, indent=1)
-    print(json.dumps({"verdict": out["verdict"], "arms": [{k: a.get(k) for k in ("skill", "verdict", "score")}
+    print(json.dumps({"verdict": out["verdict"], "arms": [{k: a.get(k) for k in ("skill", "reader_view", "verdict", "score")}
                                                           for a in out["arms"]]}, indent=1))
     return 0 if out["verdict"] == "PAIRED" else 1
 
