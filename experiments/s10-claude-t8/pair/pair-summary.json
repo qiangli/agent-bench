@@ -1,0 +1,131 @@
+{
+ "agent": "claude-opus5.5",
+ "model": "claude-opus-5-5",
+ "tool": "claude 2.1.283",
+ "pack": "skill-uptake",
+ "task": "t8-archive-largest",
+ "dag": "bashy dag run K=1 ATTEMPTS=1 BUDGET=100 QUIET=20 THINK=60 MIN_POST_STEER=20",
+ "harness": "scripts/guarded_live_arm.py, per arm, outer 900s cap, no retry",
+ "base_commit": "b55e0aa4731d92ef45d38f49cf5745188b9562d1 (both arms; no tracked change between them)",
+ "hashes": {
+  "fixture_tree_sha256": "5bc4ae178a0099cd810f549faf20f6e8da450e3228a9c19dbd06981f74149b10",
+  "grader_tree_sha256": "d311dc6d93efeb59866fad4d1fafe2511d3c2a1ccf60b21d083b96d4eb8325c5",
+  "reference_tree_sha256": "91ace7b965a1fc85c12ecbe8838d9fba2f368638057ffcdd7816932e433c14d6",
+  "task_yaml_sha256": "999e4cec07a27fa83279c15abb3de58f2bbaf134c272413391f4b6eaf3d113b6",
+  "dag_md_sha256": "dfc75bf5ed4aaf6182d853650fd5a0c1231523f3c021587631d38f6739399d5e",
+  "guarded_live_arm_py_sha256": "54c5f6473ff59054b819f2f08b397008f5227ca96e2df245722e9c8ad8e8e6c8",
+  "off_workspace_fixture_files_identical": true
+ },
+ "verdict": "PAIRED",
+ "delta_points": 0,
+ "why": "both arms PASS the guard and score 1 pt with discovery 0; the on arm exported the bashy skill but the agent ran no bashy command",
+ "caveat": "arms ran in separate invocations: the agent-bench #21 pair wrapper was killed by its idle timeout after off finished, so on was launched standalone with the same binary, base commit and settings; off was not rerun",
+ "arms": [
+  {
+   "skill": "off",
+   "source": "agent-bench #21, saved report.json (not rerun)",
+   "verdict": "PASS",
+   "score": {
+    "points": 1,
+    "fail": false,
+    "result_ok": true,
+    "discovery": 0,
+    "format_use": "none",
+    "why": "largest archive member correct",
+    "ended": "idle",
+    "secs": 117
+   },
+   "skill_md": false,
+   "skill_sha256": null,
+   "requests": 5,
+   "transcript_sessions": 1,
+   "usage_cwd_is_arm_workspace": true,
+   "usage_model_ok": true,
+   "usage_total": {
+    "input_tokens": 18,
+    "output_tokens": 1613,
+    "cache_creation_input_tokens": 24615,
+    "cache_read_input_tokens": 343978
+   },
+   "quota_before": {
+    "5h": 7,
+    "week": 39
+   },
+   "quota_after": {
+    "5h": 7,
+    "week": 39
+   },
+   "wall_s": 151.2,
+   "canary": "PASS",
+   "negative_controls": "decoy and real-HOME probe writes SIGKILLed and absent, before and after",
+   "sandbox_denials": [],
+   "real_home_changed": [],
+   "runner_real_home_writes": [],
+   "keychain_unchanged": true,
+   "vendor_processes": 1,
+   "vendor_sandboxed": true,
+   "vendor_home_isolated": true,
+   "vendor_claude_config_dir_isolated": true,
+   "task_delivered": true,
+   "quota_source": "cached-fallback (refresh failed, nonstale cache)"
+  },
+  {
+   "skill": "on",
+   "source": "this commit, guarded_live_arm.py rc=0",
+   "verdict": "PASS",
+   "bashy": {
+    "vcs_revision": "8f0d6b1b99322e78a77d6365a4d4bbe1b465ce57",
+    "on_bashy_main": true,
+    "umbrella_pin": "91834c22",
+    "binary_sha256": "15265c05e1f7fa84cddfdd7f489512a36a57e546247131bfb50ca56a7286154e"
+   },
+   "standalone_canary": "PASS (zero-model, run just before the arm)",
+   "score": {
+    "points": 1,
+    "fail": false,
+    "result_ok": true,
+    "discovery": 0,
+    "format_use": "none",
+    "why": "largest archive member correct",
+    "ended": "idle",
+    "secs": 101
+   },
+   "skill_md": true,
+   "skill_sha256": "a5b4f49cc9a828004b4131124f53c813b88d4c5177c9809b6f1316f595c08b80",
+   "requests": 4,
+   "transcript_sessions": 1,
+   "usage_cwd_is_arm_workspace": true,
+   "usage_model_ok": true,
+   "usage_total": {
+    "input_tokens": 14,
+    "output_tokens": 1106,
+    "cache_creation_input_tokens": 25285,
+    "cache_read_input_tokens": 264452
+   },
+   "quota_before": {
+    "5h": 7,
+    "week": 39
+   },
+   "quota_after": {
+    "5h": 7,
+    "week": 39
+   },
+   "wall_s": 135.9,
+   "canary": "PASS",
+   "negative_controls": "decoy and real-HOME probe writes SIGKILLed and absent, before and after",
+   "sandbox_denials": [],
+   "real_home_changed": [],
+   "runner_real_home_writes": [
+    "~/.bashy/room/.timeline.lock"
+   ],
+   "keychain_unchanged": true,
+   "vendor_processes": 1,
+   "vendor_sandboxed": true,
+   "vendor_home_isolated": true,
+   "vendor_claude_config_dir_isolated": true,
+   "task_delivered": true,
+   "quota_source": "cached-fallback (refresh failed, nonstale cache)"
+  }
+ ],
+ "remaining_known_leak": "the canary's last-step `bashy inbox` probe (not on the arm path) is still SIGKILLed for writing under the real ~/.bashy"
+}
