@@ -1,0 +1,127 @@
+{
+ "agent": "claude-opus5.5",
+ "model": "claude-opus-5-5",
+ "tool": "claude 2.1.283",
+ "pack": "skill-uptake",
+ "task": "t9-preview-delete",
+ "dag": "bashy dag run K=1 ATTEMPTS=1 BUDGET=100 QUIET=20",
+ "harness": "scripts/guarded_pair.py --order off,on (one invocation, both arms via guarded_live_arm.py), no retry",
+ "base_commit": "5163444 (both arms, same invocation)",
+ "bashy": {
+  "vcs_revision": "8f0d6b1b99322e78a77d6365a4d4bbe1b465ce57",
+  "binary_sha256": "15265c05e1f7fa84cddfdd7f489512a36a57e546247131bfb50ca56a7286154e"
+ },
+ "hashes": {
+  "fixture_tree_sha256": "86ffd144c64c203dd1fe9df124d20567e1452138a7e97ff1ed28cd7571ade95d",
+  "grader_tree_sha256": "95a0d2412e810fb262dca2a7146ba1736b5be6db2c46b59be96e03e3b8b32d3f",
+  "reference_tree_sha256": "cd403214b8bb2ad2a39f9407b664bc4d0de56b64307de154fc78a27950297446",
+  "task_yaml_sha256": "8a3722989ffe4fdbd39779299c956c5e9cb91499fa708b5a5a95f432c93f474d",
+  "dag_md_sha256": "dfc75bf5ed4aaf6182d853650fd5a0c1231523f3c021587631d38f6739399d5e",
+  "guarded_live_arm_py_sha256": "54c5f6473ff59054b819f2f08b397008f5227ca96e2df245722e9c8ad8e8e6c8",
+  "guarded_pair_py_sha256": "cd60a7d084651aea353e04c2dd54a9f45d686a9af501a9c2463aa0885a54f503"
+ },
+ "standalone_canary": "PASS (zero-model, run just before the pair; known leak: bashy inbox probe SIGKILLed)",
+ "concurrent_runs": [],
+ "verdict": "UNSCORED",
+ "delta_points": null,
+ "why": "on arm was SIGKILLed at the guarded_live_arm wall bound (BUDGET+75 = 175s): DAG pre-launch setup took ~135s, so claude ran ~40s; no results row and no attributable usage. Off is scored but there is no pair.",
+ "fallback": "no pair delta; the canonical fallback (saved off/on receipts for earlier tasks, story open) stands unchanged",
+ "arms": [
+  {
+   "skill": "off",
+   "rc": 0,
+   "verdict": "PASS",
+   "score": {
+    "points": 0,
+    "fail": false,
+    "result_ok": false,
+    "discovery": 0,
+    "format_use": "none",
+    "why": "wrong deletion result",
+    "ended": "idle",
+    "secs": 125
+   },
+   "result_note": "retired.csv deleted and keep.csv intact, but RESULT.json used one-element lists; grader requires exact strings",
+   "skill_md": false,
+   "requests": 6,
+   "usage_total": {
+    "input_tokens": 22,
+    "output_tokens": 1976,
+    "cache_creation_input_tokens": 24830,
+    "cache_read_input_tokens": 427646
+   },
+   "wall_s": 169.1,
+   "guard": {
+    "canary": "PASS",
+    "negative_controls": "decoy and real-HOME probe writes SIGKILLed and absent, before and after",
+    "sandbox_denials": [],
+    "real_home_changed": [],
+    "runner_real_home_writes": [],
+    "keychain_unchanged": true,
+    "vendor_processes": 1,
+    "vendor_sandboxed": true,
+    "vendor_home_isolated": true,
+    "vendor_claude_config_dir_isolated": true,
+    "vendor_other_denials": "exec of /usr/bin/security only (blocked by design)",
+    "task_delivered": true,
+    "quota_before": {
+     "5h": 8,
+     "week": 40
+    },
+    "quota_after": {
+     "5h": 8,
+     "week": 40
+    },
+    "quota_source": "cached-fallback (refresh failed, nonstale cache)"
+   }
+  },
+  {
+   "skill": "on",
+   "rc": 1,
+   "verdict": "UNSCORED",
+   "score": null,
+   "failures": [
+    "dag run exceeded its wall bound and was killed",
+    "no results row (unscored)",
+    "no attributable usage (arm transcript with token usage in the arm workspace)"
+   ],
+   "dag_rc": -9,
+   "skill_preflight_sha256": "a5b4f49cc9a828004b4131124f53c813b88d4c5177c9809b6f1316f595c08b80",
+   "workspace_skill_md": false,
+   "requests_attributed": 0,
+   "usage_total": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0
+   },
+   "wall_s": 175.1,
+   "survivors_after_kill": "none (checked after the pair terminated; arm temp root removed)",
+   "guard": {
+    "canary": "PASS",
+    "negative_controls": "decoy and real-HOME probe writes SIGKILLed and absent, before and after",
+    "sandbox_denials": [],
+    "real_home_changed": [],
+    "runner_real_home_writes": [],
+    "keychain_unchanged": true,
+    "vendor_processes": 1,
+    "vendor_sandboxed": true,
+    "vendor_home_isolated": true,
+    "vendor_claude_config_dir_isolated": true,
+    "vendor_other_denials": "exec of /usr/bin/security only (blocked by design)",
+    "task_delivered": true,
+    "quota_before": {
+     "5h": 8,
+     "week": 40
+    },
+    "quota_after": {
+     "5h": 9,
+     "week": 40
+    },
+    "quota_source": "cached-fallback (refresh failed, nonstale cache)"
+   }
+  }
+ ],
+ "caveat": "5h quota moved 8%->9% across the on arm; concurrent weave workers on this host also use the same Claude account, so it is not attributed to the arm",
+ "remaining_known_leak": "the canary's last-step `bashy inbox` probe (not on the arm path) is still SIGKILLed for writing under the real ~/.bashy"
+}
