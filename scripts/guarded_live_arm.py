@@ -495,6 +495,39 @@ def ycode_receipt(arm_evidence: str, model: str | None) -> tuple[list[dict], int
     return out, len(requests)
 
 
+def agy_receipt(arm_evidence: str, model: str | None) -> tuple[list[dict], int]:
+    """Require exact AGY usage in an isolated structured event receipt.
+
+    AGY's visible TUI token counter is not a provider usage record. The
+    harness must preserve the CLI's stream-json events at this path before an
+    AGY arm can pass. A result without usage, as seen in older AGY releases,
+    is deliberately unscored.
+    """
+    path = os.path.join(arm_evidence, "agy.events.jsonl")
+    with open(path, encoding="utf-8") as fh:
+        events = [json.loads(line) for line in fh if line.strip()]
+    results = [event.get("result") for event in events if event.get("event") == "result"]
+    if len(results) != 1 or not isinstance(results[0], dict):
+        raise ValueError(f"expected one AGY result event, found {len(results)}")
+    result = results[0]
+    if result.get("status") != "SUCCESS" or result.get("num_turns") != 1:
+        raise ValueError("AGY result is not one successful turn")
+    if result.get("request_count") != 1 or isinstance(result.get("request_count"), bool):
+        raise ValueError("AGY result does not prove exactly one provider request")
+    usage = result.get("usage")
+    if not isinstance(usage, dict) or not all(
+        isinstance(usage.get(key), int) and not isinstance(usage[key], bool) and usage[key] >= 0
+        for key in ("input_tokens", "output_tokens")
+    ):
+        raise ValueError("AGY result has no exact vendor-reported token usage")
+    reported_model = result.get("model")
+    if model and reported_model != model:
+        raise ValueError("AGY result model does not match requested model")
+    return [{"model": reported_model, "model_ok": True,
+             "usage": {key: usage[key] for key in ("input_tokens", "output_tokens")},
+             "source": "AGY structured result"}], 1
+
+
 def run(args) -> int:
     ev = os.path.abspath(args.evidence)
     os.makedirs(ev, exist_ok=True)
@@ -708,6 +741,13 @@ def run(args) -> int:
                 usage, request_count = [], 0
                 report["failures"].append(f"invalid ycode usage receipt: {error}")
             report["arm_workspace"] = "isolated ycode session"
+        elif tool == "agy" and os.path.isdir(arm_ev):
+            try:
+                usage, request_count = agy_receipt(arm_ev, model)
+            except (OSError, ValueError, TypeError) as error:
+                usage, request_count = [], 0
+                report["failures"].append(f"invalid AGY usage receipt: {error}")
+            report["arm_workspace"] = "isolated AGY structured result"
         else:
             cwds = {u["cwd"] for u in usage_records(arm_ev, "", None)} if os.path.isdir(arm_ev) else set()
             cand = sorted(d for d in cwds if d.startswith(root + "/bench-ws."))
@@ -719,7 +759,7 @@ def run(args) -> int:
         report["usage_total"] = {k: sum(u["usage"].get(k, 0) for u in usage)
                                  for k in ("input_tokens", "output_tokens",
                                            "cache_creation_input_tokens", "cache_read_input_tokens")}
-        if not any(u["model_ok"] and (tool == "ycode" or (u["cwd_is_ws"] and u["cwd"].startswith(root + "/"))) for u in usage):
+        if not any(u["model_ok"] and (tool in ("ycode", "agy") or (u["cwd_is_ws"] and u["cwd"].startswith(root + "/"))) for u in usage):
             report["failures"].append("no attributable usage (arm transcript with token usage in the arm workspace)")
         report["requests"] = request_count
         if tool == "ycode" and request_count < 1:

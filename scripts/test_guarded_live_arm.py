@@ -88,6 +88,30 @@ class DagGuardWiringTest(unittest.TestCase):
 
 
 class WrapperParsingTest(unittest.TestCase):
+    def test_agy_receipt_requires_one_exact_vendor_usage_result(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            path = Path(tmp, "agy.events.jsonl")
+            result = {"event": "result", "result": {"status": "SUCCESS", "num_turns": 1,
+                      "request_count": 1,
+                      "model": "gemini3.8-flash", "usage": {"input_tokens": 13,
+                                                          "output_tokens": 7}}}
+            path.write_text(json.dumps(result) + "\n")
+            usage, requests = g.agy_receipt(tmp, "gemini3.8-flash")
+            self.assertEqual(requests, 1)
+            self.assertEqual(usage[0]["usage"], {"input_tokens": 13, "output_tokens": 7})
+            for bad in (
+                {"event": "result", "result": {"status": "SUCCESS", "num_turns": 1}},
+                {"event": "result", "result": {"status": "SUCCESS", "num_turns": 2,
+                 "request_count": 1,
+                 "model": "gemini3.8-flash", "usage": {"input_tokens": 13, "output_tokens": 7}}},
+                {"event": "result", "result": {"status": "SUCCESS", "num_turns": 1,
+                 "request_count": 1,
+                 "model": "other", "usage": {"input_tokens": 13, "output_tokens": 7}}},
+            ):
+                path.write_text(json.dumps(bad) + "\n")
+                with self.assertRaises(ValueError):
+                    g.agy_receipt(tmp, "gemini3.8-flash")
+
     def test_wrapper_ancestors_are_separate_and_vendor_escape_fails(self):
         rows = {
             10: {"pid": 10, "ppid": 1, "comm": "bashy", "sandboxed": 0},
