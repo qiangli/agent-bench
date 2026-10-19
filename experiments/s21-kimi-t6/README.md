@@ -1,5 +1,9 @@
 # Sprint 446 / Story 2140: Kimi t6 script versus prose
 
+`attempt-summary.json` is a redacted receipt: `<operator-home>` replaces the
+operator's home path. Its guard failures, request count, usage and score
+outcome are unchanged.
+
 Base: published agent-bench `60cba892c4a4a25b94ff739b7804ad11027f5c8d` after rebase. Holder: `codex-gpt6-sol`.
 Task and grader: unchanged `skill-uptake/t6-pdf-fact` fixture and grader.
 

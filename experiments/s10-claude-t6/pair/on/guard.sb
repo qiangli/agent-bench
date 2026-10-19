@@ -1,4 +1,4 @@
 (version 1)
 (allow default)
-(deny file-write* (subpath "/Users/qiangli") (subpath "/private/tmp/s10g.8kmpi4jx/decoy") (with send-signal SIGKILL))
+(deny file-write* (subpath "<operator-home>") (subpath "<arm-temp-root>/s10g.8kmpi4jx/decoy") (with send-signal SIGKILL))
 (deny process-exec (literal "/usr/bin/security"))

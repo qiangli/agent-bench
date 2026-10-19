@@ -1,39 +1,39 @@
 {
  "bashy": "/tmp/s446-candidate-bin/bashy",
  "protected_homes": [
-  "/Users/qiangli"
+  "<operator-home>"
  ],
  "verdict": "PASS",
  "guard": "sandbox-exec deny file-write* + SIGKILL (decoy verified)",
- "arm_home": "/private/tmp/canary.px9l57gd/arm/bench-armhome",
+ "arm_home": "<arm-temp-root>/canary.px9l57gd/arm/bench-armhome",
  "poisoned": {
-  "CLAUDE_CONFIG_DIR": "/Users/qiangli/.claude",
-  "BASHY_HOME": "/Users/qiangli/.bashy",
-  "BASHY_MB_DIR": "/Users/qiangli/.bashy/mb",
-  "BASHY_SPRINT_DIR": "/Users/qiangli/.bashy/sprint",
-  "BASHY_ACTIVITY_DIR": "/Users/qiangli/.bashy/activity",
-  "BASHY_FLEET_DIR": "/Users/qiangli/.bashy/fleet",
-  "CODEX_HOME": "/Users/qiangli/.codex",
-  "XDG_CONFIG_HOME": "/Users/qiangli/.config",
-  "XDG_DATA_HOME": "/Users/qiangli/.local/share",
-  "XDG_STATE_HOME": "/Users/qiangli/.local/state",
-  "GEMINI_CLI_HOME": "/Users/qiangli",
-  "OPENCODE_CONFIG_DIR": "/Users/qiangli/.config/opencode",
-  "BASHY_OTEL_SPOOL": "/Users/qiangli/.agents/otel/spool/spans.jsonl"
+  "CLAUDE_CONFIG_DIR": "<operator-home>/.claude",
+  "BASHY_HOME": "<operator-home>/.bashy",
+  "BASHY_MB_DIR": "<operator-home>/.bashy/mb",
+  "BASHY_SPRINT_DIR": "<operator-home>/.bashy/sprint",
+  "BASHY_ACTIVITY_DIR": "<operator-home>/.bashy/activity",
+  "BASHY_FLEET_DIR": "<operator-home>/.bashy/fleet",
+  "CODEX_HOME": "<operator-home>/.codex",
+  "XDG_CONFIG_HOME": "<operator-home>/.config",
+  "XDG_DATA_HOME": "<operator-home>/.local/share",
+  "XDG_STATE_HOME": "<operator-home>/.local/state",
+  "GEMINI_CLI_HOME": "<operator-home>",
+  "OPENCODE_CONFIG_DIR": "<operator-home>/.config/opencode",
+  "BASHY_OTEL_SPOOL": "<operator-home>/.agents/otel/spool/spans.jsonl"
  },
  "arm_env": {
-  "CLAUDE_CONFIG_DIR": "/private/tmp/canary.px9l57gd/arm/bench-armhome/.claude",
-  "BASHY_HOME": "/private/tmp/canary.px9l57gd/arm/bench-armhome/.bashy",
+  "CLAUDE_CONFIG_DIR": "<arm-temp-root>/canary.px9l57gd/arm/bench-armhome/.claude",
+  "BASHY_HOME": "<arm-temp-root>/canary.px9l57gd/arm/bench-armhome/.bashy",
   "BASHY_MB_DIR": "",
   "BASHY_SPRINT_DIR": "",
   "BASHY_ACTIVITY_DIR": "",
   "BASHY_FLEET_DIR": "",
-  "CODEX_HOME": "/private/tmp/canary.px9l57gd/arm/bench-armhome/.codex",
-  "XDG_CONFIG_HOME": "/private/tmp/canary.px9l57gd/arm/bench-armhome/.config",
-  "XDG_DATA_HOME": "/private/tmp/canary.px9l57gd/arm/bench-armhome/.local/share",
-  "XDG_STATE_HOME": "/private/tmp/canary.px9l57gd/arm/bench-armhome/.local/state",
-  "GEMINI_CLI_HOME": "/private/tmp/canary.px9l57gd/arm/bench-armhome",
-  "OPENCODE_CONFIG_DIR": "/private/tmp/canary.px9l57gd/arm/bench-armhome/.config/opencode",
+  "CODEX_HOME": "<arm-temp-root>/canary.px9l57gd/arm/bench-armhome/.codex",
+  "XDG_CONFIG_HOME": "<arm-temp-root>/canary.px9l57gd/arm/bench-armhome/.config",
+  "XDG_DATA_HOME": "<arm-temp-root>/canary.px9l57gd/arm/bench-armhome/.local/share",
+  "XDG_STATE_HOME": "<arm-temp-root>/canary.px9l57gd/arm/bench-armhome/.local/state",
+  "GEMINI_CLI_HOME": "<arm-temp-root>/canary.px9l57gd/arm/bench-armhome",
+  "OPENCODE_CONFIG_DIR": "<arm-temp-root>/canary.px9l57gd/arm/bench-armhome/.config/opencode",
   "BASHY_OTEL_SPOOL": ""
  },
  "benchbot_commits": [
@@ -45,7 +45,7 @@
  "real_home_changed": [],
  "host_concurrent_writes": [
   {
-   "path": "/Users/qiangli/.bashy/coord/claims.lock",
+   "path": "<operator-home>/.bashy/coord/claims.lock",
    "holders": [
     "coord-claims:79788"
    ]
@@ -95,7 +95,7 @@
    "step": "todo list",
    "rc": 0,
    "ok": true,
-   "out": "todo [repo] /private/tmp/canary.px9l57gd/ws/docs/todo\nno tasks (bashy todo add \"...\")\n"
+   "out": "todo [repo] <arm-temp-root>/canary.px9l57gd/ws/docs/todo\nno tasks (bashy todo add \"...\")\n"
   },
   {
    "step": "inspect context",

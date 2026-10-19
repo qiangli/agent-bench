@@ -1,5 +1,8 @@
 # Sprint 446 / story 2140: AGY t6 format pairs
 
+`guard-summary.json` is a redacted receipt: `<operator-home>` replaces the
+operator's home path. Its guard verdict and findings are unchanged.
+
 Base: published agent-bench `51cb2ea`. This workspace made **zero vendor
 requests**. No Bashy production files or defaults were changed.
 

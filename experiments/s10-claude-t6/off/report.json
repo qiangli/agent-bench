@@ -10,7 +10,7 @@
   "no attributable usage (arm transcript with token usage in the arm workspace)"
  ],
  "protected_homes": [
-  "/Users/qiangli"
+  "<operator-home>"
  ],
  "tool": "claude",
  "model": "claude-opus-5-5",
@@ -38,7 +38,7 @@
   "AGENT=claude-opus5.5",
   "PACK=skill-uptake",
   "TASK=t6-pdf-fact",
-  "RUNS=/private/tmp/s10g.nk0_5ddo/runs",
+  "RUNS=<arm-temp-root>/s10g.nk0_5ddo/runs",
   "K=1",
   "ATTEMPTS=1",
   "SKILL=off",
@@ -64,7 +64,7 @@
  },
  "runner_real_home_writes": [
   {
-   "path": "/Users/qiangli/.bashy/coord/claims.lock",
+   "path": "<operator-home>/.bashy/coord/claims.lock",
    "holders": [
     "coord-claims:45740"
    ]
@@ -73,7 +73,7 @@
  "real_home_changed": [],
  "host_concurrent_writes": [
   {
-   "path": "/Users/qiangli/.bashy/room/.timeline.lock",
+   "path": "<operator-home>/.bashy/room/.timeline.lock",
    "holders": [
     "room-emit:33339"
    ]
@@ -89,7 +89,7 @@
   {
    "pid": 46064,
    "ppid": 46050,
-   "comm": "/Users/qiangli/.bashy/tools/claude/2.1.283/claude",
+   "comm": "<operator-home>/.bashy/tools/claude/2.1.283/claude",
    "sandboxed": 1
   }
  ],

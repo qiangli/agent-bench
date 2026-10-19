@@ -2,12 +2,12 @@
   "verdict": "PASS",
   "guard": "sandbox-exec deny file-write* + SIGKILL (decoy verified)",
   "protected_homes": [
-    "/Users/qiangli"
+    "<operator-home>"
   ],
   "real_home_changed": [],
   "host_concurrent_writes": [
     {
-      "path": "/Users/qiangli/.bashy/coord/claims.lock",
+      "path": "<operator-home>/.bashy/coord/claims.lock",
       "holders": [
         "coord-claims:76133"
       ]

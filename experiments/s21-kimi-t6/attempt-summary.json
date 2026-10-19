@@ -1,8 +1,8 @@
 {
   "verdict": "UNSCORED",
   "failures": [
-    "write into a real home attempted: ['2026-10-18 15:59:00.980 E  sandboxd[92678:d39b0c1] [com.apple.sandbox.reporting:violation] Sandbox: go(93117) deny(1) file-write-create /Users/qiangli/.bashy/weave/agent-bench-224072e0/agent-data/go-build-cache/run-14']",
-    "vendor process outside the guard: [{'pid': 92701, 'ppid': 92691, 'comm': '/Users/qiangli/.local/bin/bashy', 'sandboxed': 0}, {'pid': 93062, 'ppid': 92701, 'comm': '/Users/qiangli/.local/bin/bashy', 'sandboxed': 0}, {'pid': 93065, 'ppid': 92701, 'comm': 'bashy', 'sandboxed': 1}, {'pid': 93066, 'ppid': 93065, 'comm': '/Users/qiangli/.local/bin/bashy', 'sandboxed': 1}, {'pid': 93069, 'ppid': 93066, 'comm': '/Users/qiangli/.local/bin/bashy', 'sandboxed': 1}, {'pid': 93072, 'ppid': 93069, 'comm': '/Users/qiangli/.local/bin/bashy', 'sandboxed': 1}, {'pid': 93074, 'ppid': 93072, 'comm': '/Users/qiangli/.local/bin/bashy', 'sandboxed': 1}, {'pid': 93076, 'ppid': 93072, 'comm': '/Users/qiangli/.local/bin/bashy', 'sandboxed': 1}]",
+    "write into a real home attempted: ['2026-10-18 15:59:00.980 E  sandboxd[92678:d39b0c1] [com.apple.sandbox.reporting:violation] Sandbox: go(93117) deny(1) file-write-create <operator-home>/.bashy/weave/agent-bench-224072e0/agent-data/go-build-cache/run-14']",
+    "vendor process outside the guard: [{'pid': 92701, 'ppid': 92691, 'comm': '<operator-home>/.local/bin/bashy', 'sandboxed': 0}, {'pid': 93062, 'ppid': 92701, 'comm': '<operator-home>/.local/bin/bashy', 'sandboxed': 0}, {'pid': 93065, 'ppid': 92701, 'comm': 'bashy', 'sandboxed': 1}, {'pid': 93066, 'ppid': 93065, 'comm': '<operator-home>/.local/bin/bashy', 'sandboxed': 1}, {'pid': 93069, 'ppid': 93066, 'comm': '<operator-home>/.local/bin/bashy', 'sandboxed': 1}, {'pid': 93072, 'ppid': 93069, 'comm': '<operator-home>/.local/bin/bashy', 'sandboxed': 1}, {'pid': 93074, 'ppid': 93072, 'comm': '<operator-home>/.local/bin/bashy', 'sandboxed': 1}, {'pid': 93076, 'ppid': 93072, 'comm': '<operator-home>/.local/bin/bashy', 'sandboxed': 1}]",
     "no results row (unscored)",
     "no attributable usage (arm transcript with token usage in the arm workspace)",
     "no ycode provider request recorded"
@@ -42,7 +42,7 @@
   },
   "real_home_changed": [],
   "sandbox_denials": [
-    "2026-10-18 15:59:00.980 E  sandboxd[92678:d39b0c1] [com.apple.sandbox.reporting:violation] Sandbox: go(93117) deny(1) file-write-create /Users/qiangli/.bashy/weave/agent-bench-224072e0/agent-data/go-build-cache/run-14"
+    "2026-10-18 15:59:00.980 E  sandboxd[92678:d39b0c1] [com.apple.sandbox.reporting:violation] Sandbox: go(93117) deny(1) file-write-create <operator-home>/.bashy/weave/agent-bench-224072e0/agent-data/go-build-cache/run-14"
   ],
   "usage_total": {
     "input_tokens": 0,

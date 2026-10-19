@@ -4,7 +4,7 @@
 For each arm (off, on) this builds a workspace and an arm HOME exactly as the
 DAG `run` task does (arm_home.py prepare, skill_arm.py under the arm env),
 then runs the arm's Claude ONCE, non-interactively, against a local fake
-Anthropic endpoint (ANTHROPIC_BASE_URL on 127.0.0.1, a dummy API key, no
+Anthropic endpoint (ANTHROPIC_BASE_URL on localhost, a dummy API key, no
 Keychain seed). The fake endpoint records the /v1/messages request body and
 answers 400, so no request ever reaches the provider and no quota is spent.
 Claude, the export and every arm command run under the same write-deny
@@ -90,7 +90,7 @@ def fake_endpoint() -> tuple[http.server.HTTPServer, list[bytes]]:
         def log_message(self, *a):
             pass
 
-    srv = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    srv = http.server.HTTPServer(("localhost", 0), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv, seen
 
@@ -117,7 +117,7 @@ def probe(arm: str, bashy: str, claude: str, guard: list[str], root: str) -> dic
         return out
     srv, seen = fake_endpoint()
     try:
-        full.update({"ANTHROPIC_BASE_URL": f"http://127.0.0.1:{srv.server_port}",
+        full.update({"ANTHROPIC_BASE_URL": f"http://localhost:{srv.server_port}",
                      "ANTHROPIC_API_KEY": "sk-ant-bench-probe-not-a-key",
                      "CLAUDE_CODE_MAX_RETRIES": "0", "DISABLE_TELEMETRY": "1",
                      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"})
@@ -163,7 +163,7 @@ def persistence(claude: str, guard: list[str], root: str, current: bool) -> dict
     with open(cfg, "w") as fh:
         json.dump(data, fh)
     srv, seen = fake_endpoint()
-    full.update({"ANTHROPIC_BASE_URL": f"http://127.0.0.1:{srv.server_port}", "ANTHROPIC_API_KEY": DUMMY_KEY,
+    full.update({"ANTHROPIC_BASE_URL": f"http://localhost:{srv.server_port}", "ANTHROPIC_API_KEY": DUMMY_KEY,
                  "TERM": "xterm-256color", "COLUMNS": "200", "LINES": "50"})
     pid, fd = pty.fork()
     if pid == 0:

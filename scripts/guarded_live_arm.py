@@ -7,7 +7,9 @@ real vendor (one request) and fails closed on anything it cannot prove:
 
   * Quota: `bashy model quota --json` is read before (and after) the request;
     the vendor's 5h/week windows must be measured, ok and under --max-5h /
-    --max-week, or nothing is launched.
+    --max-week. An explicit --allow-unmeasured-bounded opt-in accepts only a
+    configured, nonstale cached subscription row showing no exhaustion or
+    cooldown, with the arm wall bound and one DAG attempt retained.
   * Guard: a sandbox-exec profile denies file-write* into every operator home
     (arm_home.protected_homes) and into a decoy dir, SIGKILLing the writer,
     and denies exec of /usr/bin/security (the Keychain CLI: an arm must not
@@ -161,6 +163,49 @@ def quota_ok(rows: dict, max_5h: int, max_week: int) -> str | None:
             return f"{window} quota not ok/measured: {row.get('status')} stale={row.get('stale')}"
         if row["used_percent"] >= cap:
             return f"{window} quota {row['used_percent']}% >= cap {cap}%"
+    return None
+
+
+def unmeasured_subscription_ok(raw: str, label: str, read: dict) -> str | None:
+    """Supervisor's explicit bounded exception for an unreadable subscription.
+
+    Inspect every cached provider window, including a single windowless row
+    (which quota() omits from its measured-window map). Unknown or conflicting
+    provider state remains a refusal.
+    """
+    if read.get("source") != "cached-fallback":
+        return "no cached subscription quota row"
+    try:
+        items = json.loads(raw)["items"]
+        rows = [r for r in items if isinstance(r, dict) and r.get("label") == label]
+    except (ValueError, KeyError, TypeError):
+        return "invalid cached quota response"
+    if not rows:
+        return f"no cached {label} subscription row"
+    windows = [r.get("window") for r in rows]
+    if any(w is not None and (not isinstance(w, str) or not w) for w in windows):
+        return "invalid cached subscription window"
+    if any(any(r.get(k) is not None and not isinstance(r[k], str) for k in ("account", "provider", "plan"))
+           for r in rows):
+        return "invalid cached subscription identity"
+    if len(windows) != len(set(windows)) or (None in windows and len(rows) != 1):
+        return "duplicate or mixed windowless cached subscription rows"
+    identity = {(r.get("account"), r.get("provider"), r.get("plan")) for r in rows}
+    if len(identity) != 1:
+        return "conflicting cached subscription account/provider/plan"
+    for row in rows:
+        window = row.get("window") or "account"
+        if row.get("configured") is not True or row.get("lane") != "subscription":
+            return f"cached {window} row is not a configured subscription"
+        if row.get("status") != "unmeasured":
+            return f"cached {window} subscription status is {row.get('status')!r}"
+        if row.get("stale") is not False:
+            return f"cached {window} subscription row is stale or has unknown freshness"
+        for key in ("exhausted", "cooldown", "cooldown_until", "retry_after", "retry_after_seconds"):
+            if row.get(key):
+                return f"cached {window} subscription reports {key}={row[key]!r}"
+        if row.get("headroom") == 0:
+            return f"cached {window} subscription reports zero headroom"
     return None
 
 
@@ -499,6 +544,13 @@ def run(args) -> int:
         open(os.path.join(ev, "quota.before.json"), "w").write(raw)
         report["quota_before"] = {w: r.get("used_percent") for w, r in rows.items()}
         why = quota_ok(rows, args.max_5h, args.max_week)
+        if why and getattr(args, "allow_unmeasured_bounded", False):
+            exception = unmeasured_subscription_ok(raw, args.quota_label or tool, report["quota_before_read"])
+            if exception is None and args.budget <= 110 and args.budget > 0:
+                report["quota_policy"] = "quota unmeasured, bounded"
+                why = None
+            else:
+                why = f"{why}; bounded exception: {exception or 'budget exceeds 110s hard bound'}"
         if why:
             report["failures"].append(f"quota gate: {why}")
             return save(2)
@@ -691,7 +743,13 @@ def run(args) -> int:
             rows, raw, report["quota_after_read"] = quota(args.bashy, args.quota_label or tool)
             open(os.path.join(ev, "quota.after.json"), "w").write(raw)
             report["quota_after"] = {w: r.get("used_percent") for w, r in rows.items()}
-            if quota_ok(rows, 101, 101):
+            if report.get("quota_policy") == "quota unmeasured, bounded":
+                why = quota_ok(rows, 101, 101)
+                if why:
+                    why = unmeasured_subscription_ok(raw, args.quota_label or tool, report["quota_after_read"])
+                if why:
+                    report["failures"].append(f"cached quota after arm unsafe: {why}")
+            elif quota_ok(rows, 101, 101):
                 report["failures"].append(f"quota after not measured/nonstale: {quota_ok(rows, 101, 101)}")
 
         scored = bool(row) and "result_ok" in row and not row.get("void")
@@ -721,6 +779,8 @@ def main(argv=None) -> int:
     ap.add_argument("--quiet", type=int, default=20)
     ap.add_argument("--max-5h", type=int, default=80)
     ap.add_argument("--max-week", type=int, default=90)
+    ap.add_argument("--allow-unmeasured-bounded", action="store_true",
+                    help="opt in to one bounded arm when the cached subscription row is unmeasured but safe")
     ap.add_argument("--skip-canary", action="store_true", help="tests only: skip the zero-model canary")
     ap.add_argument("--spend-ceiling", type=float, default=3.0)
     args = ap.parse_args(argv)

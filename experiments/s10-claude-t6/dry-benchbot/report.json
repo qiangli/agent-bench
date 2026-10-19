@@ -7,12 +7,12 @@
  "started": "2026-10-18T14:43:32.490939-07:00",
  "verdict": "FAIL",
  "failures": [
-  "real HOME paths changed: ['/Users/qiangli/.bashy/coord/claims.lock', '/Users/qiangli/.bashy/room/.timeline.lock']",
+  "real HOME paths changed: ['<operator-home>/.bashy/coord/claims.lock', '<operator-home>/.bashy/room/.timeline.lock']",
   "vendor process outside the guard: [{'pid': 42389, 'ppid': 42258, 'comm': '/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python', 'sandboxed': 0}, {'pid': 42467, 'ppid': 42258, 'comm': '/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python', 'sandboxed': 0}, {'pid': 42545, 'ppid': 42258, 'comm': '/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python', 'sandboxed': 1}, {'pid': 42551, 'ppid': 42258, 'comm': '/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python', 'sandboxed': 1}, {'pid': 42576, 'ppid': 42565, 'comm': '/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python', 'sandboxed': 1}, {'pid': 43453, 'ppid': 42258, 'comm': '/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python', 'sandboxed': 0}]",
   "no attributable usage (arm transcript with token usage in the arm workspace)"
  ],
  "protected_homes": [
-  "/Users/qiangli"
+  "<operator-home>"
  ],
  "tool": "benchbot",
  "model": null,
@@ -40,7 +40,7 @@
   "AGENT=benchbot-dry",
   "PACK=skill-uptake",
   "TASK=t6-pdf-fact",
-  "RUNS=/private/tmp/s10g.qcosuwer/runs",
+  "RUNS=<arm-temp-root>/s10g.qcosuwer/runs",
   "K=1",
   "ATTEMPTS=1",
   "SKILL=off",
@@ -65,12 +65,12 @@
   "ok": true
  },
  "real_home_changed": [
-  "/Users/qiangli/.bashy/coord/claims.lock",
-  "/Users/qiangli/.bashy/room/.timeline.lock"
+  "<operator-home>/.bashy/coord/claims.lock",
+  "<operator-home>/.bashy/room/.timeline.lock"
  ],
  "host_concurrent_writes": [
   {
-   "path": "/Users/qiangli/.bashy/room/member-claims.lock",
+   "path": "<operator-home>/.bashy/room/member-claims.lock",
    "holders": [
     "shell:claude:42177:42177"
    ]

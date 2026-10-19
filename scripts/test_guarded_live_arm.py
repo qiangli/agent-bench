@@ -117,17 +117,17 @@ class WrapperParsingTest(unittest.TestCase):
         self.assertEqual([r["pid"] for r in vendors], [2])
 
     def test_tree_denials(self):
-        home = "/Users/op"
+        home = "/opt/operator"
         log = "\n".join([
-            "2026-10-18 Df kernel[0:1] Sandbox: claude(101) deny(1) file-write-create /Users/op/.claude.json",
+            "2026-10-18 Df kernel[0:1] Sandbox: claude(101) deny(1) file-write-create /opt/operator/.claude.json",
             "2026-10-18 Df kernel[0:1] Sandbox: claude(101) deny(1) process-exec /usr/bin/security",
-            "2026-10-18 Df kernel[0:1] Sandbox: other(999) deny(1) file-write-create /Users/op/x",
-            "2026-10-18 Df kernel[0:1] Sandbox: claude(101) deny(1) file-write-create /Users/opx/y",
+            "2026-10-18 Df kernel[0:1] Sandbox: other(999) deny(1) file-write-create /opt/operator/x",
+            "2026-10-18 Df kernel[0:1] Sandbox: claude(101) deny(1) file-write-create /opt/operatorx/y",
         ])
         writes, other = g.tree_denials(log, {101}, [home])
         self.assertEqual(len(writes), 1)
         self.assertIn(".claude.json", writes[0])
-        self.assertEqual(len(other), 2)  # the exec denial, and /Users/opx is not /Users/op
+        self.assertEqual(len(other), 2)  # the exec denial, and /opt/operatorx is not /opt/operator
 
     def test_usage_records_attribute_by_cwd(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
@@ -222,8 +222,8 @@ class WrapperParsingTest(unittest.TestCase):
             self.assertIn("below", report["failures"][-1])
 
     def test_profile_denies_homes_decoy_and_keychain_cli(self):
-        p = g.guard_profile(["/Users/op"], "/private/tmp/d")
-        self.assertIn('(deny file-write* (subpath "/Users/op") (subpath "/private/tmp/d") (with send-signal SIGKILL))', p)
+        p = g.guard_profile(["/opt/operator"], "/tmp/d")
+        self.assertIn('(deny file-write* (subpath "/opt/operator") (subpath "/tmp/d") (with send-signal SIGKILL))', p)
         self.assertIn('(deny process-exec (literal "/usr/bin/security"))', p)
 
 
@@ -240,6 +240,35 @@ def fake_bashy(tmp, refresh_rc, refresh_stale, cached_stale):
 
 
 class QuotaReadTest(unittest.TestCase):
+    def test_unmeasured_exception_requires_opted_in_cached_safe_subscription(self):
+        row = {"label": "agy", "configured": True, "lane": "subscription",
+               "status": "unmeasured", "stale": False, "headroom": None}
+        raw = json.dumps({"items": [row]})
+        cached = {"source": "cached-fallback"}
+        self.assertIsNone(g.unmeasured_subscription_ok(raw, "agy", cached))
+        self.assertIn("cached", g.unmeasured_subscription_ok(raw, "agy", {"source": "refresh"}))
+        for delta in ({"status": "exhausted"}, {"status": "cooldown"}, {"cooldown_until": "tomorrow"},
+                      {"exhausted": True}, {"headroom": 0}, {"stale": True}, {"lane": "api"}):
+            with self.subTest(delta=delta):
+                self.assertIsNotNone(g.unmeasured_subscription_ok(json.dumps({"items": [row | delta]}),
+                                                                  "agy", cached))
+        self.assertIsNotNone(g.unmeasured_subscription_ok(json.dumps({"items": [row, row]}), "agy", cached))
+
+    def test_unmeasured_exception_checks_every_distinct_provider_window(self):
+        base = {"label": "glm", "account": "zai-plan", "provider": "zai", "plan": "pro",
+                "configured": True, "lane": "subscription", "status": "unmeasured", "stale": False}
+        rows = [base | {"window": w} for w in ("5h", "week", "concurrent")]
+        cached = {"source": "cached-fallback"}
+        check = lambda selected: g.unmeasured_subscription_ok(json.dumps({"items": selected}), "glm", cached)
+        self.assertIsNone(check(rows))
+        self.assertIn("duplicate", check(rows + [rows[0]]))
+        self.assertIn("mixed", check(rows + [base]))
+        self.assertIn("invalid", check(rows[:2] + [rows[2] | {"window": ["concurrent"]}]))
+        self.assertIn("invalid", check(rows[:2] + [rows[2] | {"account": {"bad": 1}}]))
+        self.assertIn("conflicting", check(rows[:2] + [rows[2] | {"account": "other"}]))
+        self.assertIn("cooldown", check(rows[:2] + [rows[2] | {"cooldown": True}]))
+        self.assertIn("exhausted", check(rows[:2] + [rows[2] | {"status": "exhausted"}]))
+
     def test_refresh_ok(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             rows, _, meta = g.quota(fake_bashy(tmp, 0, False, True), "claude")
@@ -261,6 +290,31 @@ class QuotaReadTest(unittest.TestCase):
             self.assertIn("stale=['5h', 'week']", meta["refresh_error"])
             self.assertFalse(meta["fallback_nonstale"])
             self.assertIn("not ok", g.quota_ok(rows, 80, 90))
+
+    def test_unmeasured_policy_requires_opt_in_and_records_receipt_before_guard(self):
+        row = {"label": "agy", "configured": True, "lane": "subscription",
+               "status": "unmeasured", "stale": False, "headroom": None}
+        quota = ({}, json.dumps({"items": [row]}), {"source": "cached-fallback"})
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            bashy = Path(tmp, "bashy")
+            bashy.write_text("#!/bin/sh\n")
+            args = SimpleNamespace(evidence=str(Path(tmp, "default")), agent="agy-test", pack="skill-uptake",
+                                   task="t6-pdf-fact", skill="script", bashy=str(bashy), tool="agy",
+                                   model="gemini3.8-flash", quota_label=None, max_5h=80, max_week=90,
+                                   budget=100, allow_unmeasured_bounded=False)
+            with mock.patch.object(g.sys, "platform", "darwin"), \
+                 mock.patch.object(g.shutil, "which", return_value="/usr/bin/sandbox-exec"), \
+                 mock.patch.object(g, "quota", return_value=quota), \
+                 mock.patch.object(g, "negative_controls", return_value={"ok": False}), \
+                 mock.patch.object(g.subprocess, "Popen") as launch:
+                self.assertEqual(g.run(args), 2)
+                self.assertIn("quota gate", json.loads(Path(args.evidence, "report.json").read_text())["failures"][0])
+                args.evidence = str(Path(tmp, "opted"))
+                args.allow_unmeasured_bounded = True
+                self.assertEqual(g.run(args), 2)  # stopped by mocked negative control
+                receipt = json.loads(Path(args.evidence, "report.json").read_text())
+                self.assertEqual(receipt["quota_policy"], "quota unmeasured, bounded")
+                launch.assert_not_called()
 
 
 class ProcEnvTest(unittest.TestCase):
@@ -349,6 +403,16 @@ class PairTest(unittest.TestCase):
             self.assertEqual(out["verdict"], "PAIRED")
             self.assertEqual([c[c.index("--skill") + 1] for c in calls], ["script", "on"])
             self.assertTrue(all(c[-4:] == ["--tool", "ycode", "--vendor-comm", "bashy"] for c in calls))
+
+    def test_bounded_exception_is_explicit_on_both_arms(self):
+        import guarded_pair as gp
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            args = self.args(tmp)
+            args.allow_unmeasured_bounded = True
+            calls = []
+            gp.pair(args, self.fake({"off": 0, "on": 0}, calls))
+            self.assertEqual(len(calls), 2)
+            self.assertTrue(all("--allow-unmeasured-bounded" in c for c in calls))
 
     def test_yaml_pair_passes_same_settings_and_uses_yaml_artifact(self):
         import guarded_pair as gp

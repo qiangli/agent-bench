@@ -104,3 +104,11 @@ Remaining gaps:
 - the `bashy inbox` real-HOME leak (off the arm path) remains;
 - the earlier published `off/run.arm` and `on/run.arm` trees (from before the
   pair) are still tracked and should be reviewed under the same boundary.
+# Privacy redaction
+
+The tracked reports, canary records, guard profiles, and screen logs in this
+directory are redacted copies of the original arm receipts. The operator home
+is shown as `<operator-home>` and ephemeral arm paths as `<arm-temp-root>`.
+Scores, quota readings, request counts, guard verdicts, and failure reasons
+are preserved. These copies are evidence summaries, not byte-identical raw
+transcripts or runnable sandbox profiles.

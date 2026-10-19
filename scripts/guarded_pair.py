@@ -95,6 +95,8 @@ def pair(args, run_arm=None) -> dict:
         argv = ["--agent", args.agent, "--pack", args.pack, "--task", args.task, "--skill", arm,
                 "--evidence", os.path.join(ev, arm), "--bashy", args.bashy, "--budget", str(args.budget),
                 "--quiet", str(args.quiet), "--model", args.model]
+        if getattr(args, "allow_unmeasured_bounded", False):
+            argv.append("--allow-unmeasured-bounded")
         if args.tool:
             argv += ["--tool", args.tool]
         for comm in args.vendor_comm:
@@ -107,6 +109,7 @@ def pair(args, run_arm=None) -> dict:
         out["arms"].append({"skill": arm, "rc": rc, **{k: rep.get(k) for k in (
             "verdict", "score", "failures", "requests", "usage_total", "quota_before", "quota_after",
             "quota_before_read", "quota_after_read", "balance_before_usd", "balance_after_usd",
+            "quota_policy",
             "balance_delta_usd", "native_route_budget_usd", "skill_preflight", "workspace_skill",
             "negative_control_before", "negative_control_after", "canary_before",
             "real_home_changed", "sandbox_denials", "wall_s")}})
@@ -130,6 +133,8 @@ def main(argv=None) -> int:
     ap.add_argument("--order", default="off,on")
     ap.add_argument("--tool")
     ap.add_argument("--vendor-comm", action="append", default=[])
+    ap.add_argument("--allow-unmeasured-bounded", action="store_true",
+                    help="pass the explicit cached subscription quota exception to each arm")
     args = ap.parse_args(argv)
     args.bashy = os.path.abspath(args.bashy)
     args.order = args.order.split(",")
