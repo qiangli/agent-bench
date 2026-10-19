@@ -52,3 +52,18 @@ Notes:
 Only this README and the sanitized `pair-summary.json` are tracked. Raw arm
 evidence is excluded by `.gitignore`: transcripts, request ids, sandbox
 diagnostics, quota responses, canary logs, arm HOME, workspace, and binaries.
+
+## Fresh-quota follow-up
+
+A later guarded `off,on` pair completed with the same Claude agent, model,
+task and grader, a 180-second arm budget, and a 20-second quiet period. Both
+arms passed the canary and negative controls, with no sandbox denial or
+protected real-HOME change. The quota gate used recently measured nonstale
+Claude rows (5h 0%, week 40%) when its own refresh returned 502.
+
+Both arms scored 0 for a wrong deletion result. The off arm made four
+attributable requests; the on arm made six. Neither showed skill discovery or
+format use. The measured on-minus-off score difference is 0. This follow-up
+pair is **PAIRED** and does not change the canonical fallback. See
+`fresh-quota-followup-summary.json` for the sanitized receipt. Raw guarded
+evidence is outside the repository at `/tmp/s446-s10-claude-t9-1844`.

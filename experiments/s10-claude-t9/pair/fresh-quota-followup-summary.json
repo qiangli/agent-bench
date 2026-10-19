@@ -1,0 +1,53 @@
+{
+  "sprint": 446,
+  "story_id": "2b8bda69888c",
+  "agent": "claude-opus5.5",
+  "model": "claude-opus-5-5",
+  "task": "skill-uptake/t9-preview-delete",
+  "order": ["off", "on"],
+  "budget_seconds": 180,
+  "quiet_seconds": 20,
+  "candidate_sha256": "71f9f977ee3f675eceb6580fdf7bc12302753fe8a83ac87950e5704d11e4baa7",
+  "quota": {
+    "source": "measured nonstale cached fallback during pair",
+    "five_hour_used_percent": 0,
+    "week_used_percent": 40,
+    "refresh_during_pair": "analyzer door 502"
+  },
+  "verdict": "PAIRED",
+  "arms": [
+    {
+      "skill": "off",
+      "verdict": "PASS",
+      "score": 0,
+      "requests": 4,
+      "input_tokens": 12,
+      "output_tokens": 940,
+      "cache_creation_input_tokens": 23621,
+      "cache_read_input_tokens": 218436,
+      "canary": "PASS",
+      "negative_controls": "PASS",
+      "sandbox_denials": 0,
+      "real_home_changes": 0
+    },
+    {
+      "skill": "on",
+      "verdict": "PASS",
+      "score": 0,
+      "requests": 6,
+      "input_tokens": 20,
+      "output_tokens": 1902,
+      "cache_creation_input_tokens": 36343,
+      "cache_read_input_tokens": 408373,
+      "canary": "PASS",
+      "negative_controls": "PASS",
+      "sandbox_denials": 0,
+      "real_home_changes": 0
+    }
+  ],
+  "score_delta_on_minus_off": 0,
+  "result": "both arms returned the wrong deletion result",
+  "discovery_observed": false,
+  "format_use_observed": false,
+  "canonical_fallback_changed": false
+}
