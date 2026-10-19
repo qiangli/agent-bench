@@ -100,6 +100,25 @@ class SkillArmTest(unittest.TestCase):
         self.assertEqual(skill_arm.select(str(self.ws), "ycode", "yaml"), [])
         self.assertTrue((self.ws / ".agents" / "skills" / "bashy.yaml").is_file())
 
+    def test_claude_yaml_exports_supported_record_and_commits_it(self):
+        # The candidate CLI accepts --yaml only with --to; the installed
+        # host CLI may be more permissive, so pin that command contract here.
+        cli = Path(self.tmp.name) / "bashy-contract"
+        cli.write_text("#!/usr/bin/env python3\n"
+                       "import pathlib, sys\n"
+                       "args = sys.argv[1:]\n"
+                       "if args[:3] != ['skill', 'export', 'bashy'] or '--yaml' not in args or '--tool' in args:\n"
+                       "    sys.exit('unsupported skill export flags')\n"
+                       "dest = pathlib.Path(args[args.index('--to') + 1])\n"
+                       "dest.mkdir(parents=True, exist_ok=True)\n"
+                       "(dest / 'bashy.yaml').write_text('name: bashy\\n')\n")
+        cli.chmod(0o755)
+        self.assertEqual(skill_arm.select(str(self.ws), "claude", "yaml", bashy=str(cli)), [])
+        artifact = ".agents/skills/bashy.yaml"
+        self.assertTrue((self.ws / artifact).is_file())
+        self.assertIn(artifact, self.git("ls-files").splitlines())
+        self.assertEqual(self.commits(), ["skill-yaml", "fixture"])
+
     @unittest.skipUnless(HAVE_BASHY, "bashy not on PATH")
     def test_tool_without_integration_fails_not_mislabelled(self):
         with self.assertRaises(skill_arm.ArmError) as ctx:

@@ -82,7 +82,7 @@ def select(ws: str, tool: str, arm: str, bashy: str = "bashy", task: str | None 
     elif arm == "on":
         cmd = [bashy, "skill", "export", "bashy", "--repo", "--tool", tool]
     else:
-        cmd = [bashy, "skill", "export", "bashy", "--to", f"{ws}/.agents/skills", "--yaml", "--tool", tool]
+        cmd = [bashy, "skill", "export", "bashy", "--to", f"{ws}/.agents/skills", "--yaml"]
     done = subprocess.run(cmd, cwd=ws, text=True, capture_output=True)
     out = (done.stderr + done.stdout).strip()
     if done.returncode:
@@ -91,6 +91,8 @@ def select(ws: str, tool: str, arm: str, bashy: str = "bashy", task: str | None 
         raise ArmError(f"{arm} export wrote nothing (tool {tool!r} declares no integration: {out[:300]})")
     if vendor and not os.path.isfile(os.path.join(ws, vendor[1])):
         raise ArmError(f"on export did not write {vendor[1]}, the skill {tool} reads: {out[:300]}")
+    if arm == "yaml" and not os.path.isfile(os.path.join(ws, ".agents/skills/bashy.yaml")):
+        raise ArmError(f"yaml export did not write .agents/skills/bashy.yaml: {out[:300]}")
     _git(ws, "add", "-A")
     _git(ws, *BENCH_GIT, "commit", "-qm", "skill" if arm == "on" else "skill-yaml")
     return []

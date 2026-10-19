@@ -25,3 +25,26 @@ full HOME path, log, or binary is published here.
 
 Focused zero-model tests: 51 passed with 2 skips. Candidate Bashy
 `dag validate PACK=skill-uptake`: all 10 fixture/reference checks passed.
+
+## Story 2140 follow-up
+
+The YAML arm now uses the candidate CLI's supported `--to ... --yaml`
+contract, without `--tool`. A regression first failed on the old command,
+then passed after the fix; it checks that `.agents/skills/bashy.yaml` is
+committed in the arm workspace. The `on` and `off` selectors retain their
+existing behavior. The focused suite passed 39 tests, the pack validation
+passed all ten tasks, and `git diff --check` passed.
+
+One guarded pair was attempted with the same candidate revision, Claude agent,
+model, task, budget, quiet period, and `yaml,on` order. The pair found zero
+competing bench runners. Claude quota refresh failed, but measured nonstale
+cached rows passed the quota gate (5h 8%, week 40%, observed at 17:15:51 PDT).
+The zero-model canary passed; both before-request write-deny probes were killed
+and left no files. YAML export reached the candidate CLI and was refused because
+a bundled skill document carried host identity. No YAML artifact or vendor arm
+was launched; prose was skipped by the pair's fail-closed rule. No retries were
+made. The result is **UNSCORED**, with zero vendor invocations and zero provider
+requests. Scores, result, discovery, token usage, post-request quota, and
+post-request guards are unavailable. `followup-summary.json` is the sanitized
+terminal receipt. The canonical fallback remains because there is still no
+measured comparison.
