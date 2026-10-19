@@ -1,0 +1,27 @@
+{
+  "sprint": 446,
+  "story_id": "9c30598a1921",
+  "task": "skill-uptake/t6-pdf-fact",
+  "agent": "claude-opus5.5",
+  "model": "claude-opus-5-5",
+  "order": ["yaml", "on"],
+  "budget_seconds": 100,
+  "quiet_seconds": 20,
+  "candidate_sha256": "71f9f977ee3f675eceb6580fdf7bc12302753fe8a83ac87950e5704d11e4baa7",
+  "yoke_revision": "0aba640f5764f12ca3a119b7829a9a6257fe0cc4",
+  "standalone_real_home_canary": "PASS",
+  "guarded_yaml_preflight_after_path_fix": "PASS",
+  "first_attempt": {
+    "verdict": "UNSCORED",
+    "stop": "nested selector resolved a different bashy executable; export killed by write guard",
+    "vendor_requests": 0
+  },
+  "corrected_attempt": {
+    "verdict": "UNSCORED",
+    "stop": "Claude 5h quota row stale after analyzer door 502; quota gate refused",
+    "yaml_score": null,
+    "on_score": null,
+    "vendor_requests": 0
+  },
+  "canonical_fallback_changed": false
+}

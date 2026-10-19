@@ -48,3 +48,25 @@ requests. Scores, result, discovery, token usage, post-request quota, and
 post-request guards are unavailable. `followup-summary.json` is the sanitized
 terminal receipt. The canonical fallback remains because there is still no
 measured comparison.
+
+## Read-only seat and candidate path follow-up
+
+Yoke `0aba640f` made the steward role projection read an existing seat without
+creating its registry or lock. Its new regression failed before the fix and
+the full steward package passed afterward. Bashy rebuilt against that Yoke
+tree passed the real-HOME canary, including the inbox command, with no guard
+denials or protected-home changes. The candidate binary SHA-256 was
+`71f9f977ee3f675eceb6580fdf7bc12302753fe8a83ac87950e5704d11e4baa7`.
+
+The first guarded `yaml,on` dispatch stopped before vendor launch when the
+selector resolved an older `bashy` executable from the candidate's directory.
+The explicit candidate was used for the canary but not the nested selector.
+The runner now places a link named `bashy` to the exact candidate first on the
+nested PATH. A guarded zero-model YAML preflight produced the expected record
+after this change, and the focused runner suite passed 29 tests.
+
+The corrected pair attempt then stopped at the quota gate: the fresh Claude
+quota endpoint returned 502, and its 5h cached row was stale. The runner
+refused the YAML arm and skipped prose. Both attempts are **UNSCORED** with
+zero vendor requests and no score or measured delta. The canonical fallback
+remains. `read-only-seat-followup-summary.json` is the sanitized receipt.

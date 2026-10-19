@@ -19,6 +19,17 @@ import guarded_live_arm as g
 REPO = Path(__file__).resolve().parent.parent
 
 
+class CandidatePathTest(unittest.TestCase):
+    def test_nested_bashy_resolves_exact_candidate(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            original = Path(tmp, "original")
+            original.write_text("candidate")
+            link = g.candidate_on_path(str(Path(tmp, "arm")), str(original))
+            self.assertEqual(Path(link).name, "bashy")
+            self.assertEqual(Path(link).resolve(), original.resolve())
+            self.assertEqual(Path(os.path.dirname(link), "bashy").read_text(), "candidate")
+
+
 def login(expires_in_s, now=1_000_000.0):
     return json.dumps({"claudeAiOauth": {"accessToken": "a", "refreshToken": "r",
                                          "refreshTokenExpiresAt": 1, "expiresAt": (now + expires_in_s) * 1000,

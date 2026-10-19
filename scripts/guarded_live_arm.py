@@ -175,6 +175,15 @@ def skill_artifact(tool: str, arm: str) -> str:
     return SKILL_MD if tool == "claude" else ".agents/skills/bashy/SKILL.md"
 
 
+def candidate_on_path(root: str, bashy: str) -> str:
+    """Give nested DAG and selector commands the exact candidate under `bashy`."""
+    bindir = os.path.join(root, "candidate-bin")
+    os.makedirs(bindir, exist_ok=True)
+    link = os.path.join(bindir, "bashy")
+    os.symlink(os.path.realpath(bashy), link)
+    return link
+
+
 def _sha(path: str) -> str | None:
     import hashlib
     return hashlib.sha256(open(path, "rb").read()).hexdigest() if os.path.isfile(path) else None
@@ -502,6 +511,7 @@ def run(args) -> int:
     with open(sb, "w") as fh:
         fh.write(guard_profile(homes, decoy))
     shutil.copyfile(sb, os.path.join(ev, "guard.sb"))
+    candidate = candidate_on_path(root, args.bashy)
     try:
         report["negative_control_before"] = nc = negative_controls(sb, decoy, homes[0])
         if not nc["ok"]:
@@ -512,7 +522,7 @@ def run(args) -> int:
             if cb["verdict"] != "PASS":
                 report["failures"].append(f"zero-model real-HOME canary failed before the request: {cb['failures']}")
                 return save(2)
-        report["skill_preflight"] = sp = skill_preflight(args.bashy, sb, root, tool, args.skill, args.task)
+        report["skill_preflight"] = sp = skill_preflight(candidate, sb, root, tool, args.skill, args.task)
         if not sp["ok"]:
             report["failures"].append(f"skill {args.skill} export preflight failed: {sp}")
             return save(2)
@@ -523,10 +533,10 @@ def run(args) -> int:
         fp_before = canary.fingerprint(homes)
         kc_before, pj_before = keychain_meta(), projects_listing(homes)
 
-        env = dict(os.environ, PATH=os.path.dirname(args.bashy) + os.pathsep + os.environ.get("PATH", ""),
+        env = dict(os.environ, PATH=os.path.dirname(candidate) + os.pathsep + os.environ.get("PATH", ""),
                    BENCH_GUARD=sb, BENCH_ARM_ROOT=root, TMPDIR=root, PYTHONDONTWRITEBYTECODE="1",
                    BENCH_CLAUDE_KEYCHAIN="1" if tool == "claude" else "")
-        argv = [args.bashy, "dag", "run", f"AGENT={args.agent}", f"PACK={args.pack}", f"TASK={args.task}",
+        argv = [candidate, "dag", "run", f"AGENT={args.agent}", f"PACK={args.pack}", f"TASK={args.task}",
                 f"RUNS={runs}", "K=1", "ATTEMPTS=1", f"SKILL={args.skill}", f"BUDGET={args.budget}",
                 f"QUIET={args.quiet}", f"THINK={args.quiet * 3}", f"MIN_POST_STEER={args.quiet}"]
         report["dag_argv"] = argv
