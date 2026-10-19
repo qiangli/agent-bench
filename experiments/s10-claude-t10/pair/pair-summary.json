@@ -1,0 +1,54 @@
+{
+  "sprint": 446,
+  "story_id": "2b8bda69888c",
+  "agent": "claude-opus5.5",
+  "model": "claude-opus-5-5",
+  "task": "skill-uptake/t10-git-status-json",
+  "order": ["off", "on"],
+  "budget_seconds": 180,
+  "quiet_seconds": 20,
+  "candidate_sha256": "71f9f977ee3f675eceb6580fdf7bc12302753fe8a83ac87950e5704d11e4baa7",
+  "grader_sha256": "a84f519d80b5ce952ea009f5ae300e9940c371db564c42f7754c0f1ed1924bce",
+  "quota": {
+    "source": "measured nonstale cached fallback during pair",
+    "five_hour_used_percent": 0,
+    "week_used_percent": 40,
+    "refresh_during_pair": "analyzer door 502"
+  },
+  "verdict": "PAIRED",
+  "arms": [
+    {
+      "skill": "off",
+      "verdict": "PASS",
+      "score": 0,
+      "requests": 8,
+      "input_tokens": 34,
+      "output_tokens": 3607,
+      "cache_creation_input_tokens": 28996,
+      "cache_read_input_tokens": 687150,
+      "canary": "PASS",
+      "negative_controls": "PASS",
+      "sandbox_denials": 0,
+      "real_home_changes": 0
+    },
+    {
+      "skill": "on",
+      "verdict": "PASS",
+      "score": 0,
+      "requests": 6,
+      "input_tokens": 22,
+      "output_tokens": 2016,
+      "cache_creation_input_tokens": 28494,
+      "cache_read_input_tokens": 441870,
+      "canary": "PASS",
+      "negative_controls": "PASS",
+      "sandbox_denials": 0,
+      "real_home_changes": 0
+    }
+  ],
+  "score_delta_on_minus_off": 0,
+  "result": "both arms returned wrong status JSON",
+  "discovery_observed": false,
+  "format_use_observed": false,
+  "canonical_fallback_changed": false
+}
