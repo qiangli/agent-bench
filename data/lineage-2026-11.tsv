@@ -1,0 +1,10 @@
+# vendor<TAB>line<TAB>oldest>...>newest — a model inherits a (benchmark, variant) row its newest
+# predecessor in the same line has and it lacks; carried as-is, flagged, replaced by any real row.
+# muse-wonder>muse-wonder-full: the lower variant stands in as a conservative floor for the Full model.
+openai	astra	gpt6-astra>gpt6.2-astra
+openai	sol	gpt5.6-sol>gpt6-sol>gpt6.1-sol>gpt6.2-sol
+anthropic	fable	fable5.1>fable5.2
+anthropic	opus	opus5>opus5.5
+moonshot	kimi	kimi-k3>kimi-k3.1-pro
+meta	wonder	muse-wonder>muse-wonder-full
+deepseek	flash	deepseek-v4.1-flash>deepseek-v4.1-flash-1017

@@ -1,0 +1,26 @@
+# Manager ranking config for yoke-seedfit --config (schema bashy-seedfit-config-v1).
+# Every capability area present in the matrix is listed here or excluded; seedfit
+# refuses a config that would drop an area silently. All areas weigh the same; hands-on is not a
+# weight but a relative gate: a manager must out-code each worker it manages (see the report).
+schema: bashy-seedfit-config-v1
+areas:
+  coding-debug-test:      {weight: 1, hands_on: true}   # hands-on: relative dominance gate
+  browser-use:            {weight: 1}
+  steerability-collab:    {weight: 1}
+  tool-use-agentic:       {weight: 1}
+  judge-review-verify:    {weight: 1}   # proxies: no current code-review board
+  orchestration-workflow: {weight: 1}   # proxies: no current orchestration board
+  long-horizon:           {weight: 1}
+  computer-use:           {weight: 1}
+  security:               {weight: 1}
+  research-browse:        {weight: 1}
+  reasoning-knowledge:    {weight: 1}
+# architect-design-plan: no current public board — measured by agent-bench (listing it here would
+# fail the no-rows check). multimodal: not measured (nothing depends on it).
+exclude: [math]
+# Missing cell (after same-line inheritance), on a board covering >= half the candidates: (lowest observed − gap),
+# kept above zero, counted in the report. Sparser boards: missing cells skipped (absence = not run).
+missing: {mode: floor, gap: 0.05, min_coverage: 0.5}
+anchors: [fable5.2, opus5.5, gpt6.2-astra, gpt6.2-sol]
+candidates: [fable5.2, opus5.5, sonnet5.5, gpt6.2-astra, gpt6.2-sol, gemini4-carbon, gemini4-neon,
+  kimi-k3.1-pro, muse-wonder-full, glm-5.3, deepseek-v4.1-flash-1017]
