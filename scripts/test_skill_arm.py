@@ -119,13 +119,25 @@ class SkillArmTest(unittest.TestCase):
         self.assertIn(artifact, self.git("ls-files").splitlines())
         self.assertEqual(self.commits(), ["skill-yaml", "fixture"])
 
-    @unittest.skipUnless(HAVE_BASHY, "bashy not on PATH")
     def test_tool_without_integration_fails_not_mislabelled(self):
-        with self.assertRaises(skill_arm.ArmError) as ctx:
-            skill_arm.select(str(self.ws), "codex", "on")
-        # Either bashy refuses (rc=1, "declares no integration") or it exits 0
-        # having written nothing; both must fail rather than label skill-on.
-        self.assertRegex(str(ctx.exception), "declares no integration|wrote nothing")
+        # A tool with no `integration:` block must never be labelled skill-on.
+        # Whether a named tool declares one is the installed bashy catalog's
+        # call (codex gained one, so it exports for real now), so pin both
+        # no-integration contract shapes with stub CLIs, as the yaml contract
+        # test below does: bashy refuses (rc=1), or exits 0 having written
+        # nothing.
+        refuse = Path(self.tmp.name) / "bashy-refuse"
+        refuse.write_text("#!/usr/bin/env python3\n"
+                          "import sys\n"
+                          "sys.exit('skill export: tool declares no integration')\n")
+        refuse.chmod(0o755)
+        with self.assertRaisesRegex(skill_arm.ArmError, "declares no integration"):
+            skill_arm.select(str(self.ws), "codex", "on", bashy=str(refuse))
+        silent = Path(self.tmp.name) / "bashy-silent"
+        silent.write_text("#!/usr/bin/env python3\nimport sys\nsys.exit(0)\n")
+        silent.chmod(0o755)
+        with self.assertRaisesRegex(skill_arm.ArmError, "wrote nothing"):
+            skill_arm.select(str(self.ws), "codex", "on", bashy=str(silent))
         self.assertEqual(self.commits(), ["fixture"])
 
     @unittest.skipUnless(HAVE_BASHY, "bashy not on PATH")
