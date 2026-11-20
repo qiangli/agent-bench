@@ -223,6 +223,37 @@ def _no_links_out(home: str, protected: list[str]) -> None:
 KEYCHAIN_SERVICE = "Claude Code-credentials"
 KEYCHAIN_MIN_VALID_S = 900
 
+# agy >= 1.5 stores first-run onboarding completion under cache/onboarding.json,
+# outside TOOL_SEEDS (which excludes caches). Without it a fresh arm HOME opens
+# the color-scheme / Terms TUI and drops the initial prompt.
+AGY_ONBOARDING_REL = ".gemini/antigravity-cli/cache/onboarding.json"
+AGY_ONBOARDING_SYNTHETIC = {
+    "consumerOnboardingComplete": True,
+    "enterpriseOnboardingComplete": False,
+    "onboardingComplete": True,
+}
+
+
+def seed_agy_onboarding(source_home: str, home: str, protected: list[str]) -> str:
+    """Seed agy's onboarding record in the arm HOME (mode 0600): copy the
+    operator's file read-only when present, else write the synthetic completed
+    record. Returns the seeded manifest entry."""
+    src = os.path.join(source_home, AGY_ONBOARDING_REL)
+    dst = os.path.join(home, AGY_ONBOARDING_REL)
+    assert_outside(dst, protected)
+    os.makedirs(os.path.dirname(dst), mode=0o700, exist_ok=True)
+    if os.path.isfile(src):
+        with open(src, "rb") as fin:  # the operator's file: read only
+            data = fin.read()
+        label = AGY_ONBOARDING_REL
+    else:
+        data = (json.dumps(AGY_ONBOARDING_SYNTHETIC, indent=2) + "\n").encode("utf-8")
+        label = f"{AGY_ONBOARDING_REL} (synthetic)"
+    fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "wb") as fout:
+        fout.write(data)
+    return label
+
 
 def _keychain_secret(service: str) -> str:
     import subprocess
@@ -277,6 +308,8 @@ def prepare(arm_dir: str, tool: str, source_home: str | None = None,
         src = os.path.join(source_home, rel)
         if os.path.lexists(src):
             seeded += _copy(src, os.path.join(home, rel), protected, COMMON_EXCLUDE, rel)
+    if tool in ("agy", "gemini"):
+        seeded.append(seed_agy_onboarding(source_home, home, protected))
     _no_links_out(home, protected)
 
     env = {
@@ -297,6 +330,20 @@ def prepare(arm_dir: str, tool: str, source_home: str | None = None,
     if (tool == "claude" and os.environ.get("BENCH_CLAUDE_KEYCHAIN") == "1"
             and not os.path.exists(os.path.join(env["CLAUDE_CONFIG_DIR"], ".credentials.json"))):
         seeded.append(seed_claude_keychain(env["CLAUDE_CONFIG_DIR"], protected))
+    exceptions = []
+    if tool in ("agy", "gemini") and os.environ.get("BENCH_AGY_KEYCHAIN") == "1":
+        # agy >= 1.5 keeps its sign-in in the macOS login keychain, found via
+        # $HOME/Library/Keychains, not in .gemini/antigravity-cli: under the arm
+        # HOME it reads as signed out and exits at launch. A copied keychain stays
+        # locked, so the only working route is a link to the real one. That link
+        # points into the operator HOME (a token refresh writes there), so it is
+        # an explicit, recorded opt-in exception — made after _no_links_out, off
+        # unless BENCH_AGY_KEYCHAIN=1, and listed in arm.json.
+        real = os.path.join(source_home, "Library", "Keychains")
+        if os.path.isdir(real):
+            os.makedirs(os.path.join(home, "Library"), exist_ok=True)
+            os.symlink(real, os.path.join(home, "Library", "Keychains"))
+            exceptions.append("Library/Keychains -> operator login keychain (BENCH_AGY_KEYCHAIN=1)")
     if binary:
         # The vendor binary may live under the operator HOME (bashy's managed
         # tools dir); executing it is read-only, and naming it explicitly keeps
@@ -308,7 +355,7 @@ def prepare(arm_dir: str, tool: str, source_home: str | None = None,
 
     with open(os.path.join(arm, "arm.json"), "w", encoding="utf-8") as fh:
         json.dump({"tool": tool, "home": home, "seeded": seeded,
-                   "env": sorted(env)}, fh, indent=1)
+                   "exceptions": exceptions, "env": sorted(env)}, fh, indent=1)
     return env
 
 

@@ -191,6 +191,10 @@ for i in $(seq 1 "$K"); do
   bin=$("${guard[@]}" env "${preenv[@]}" bashy tool show "$tool" --field cli.binary 2>/dev/null)
   rm -rf "$pre"
   case $bin in */*) ;; *) bin= ;; esac  # pin a managed path; a bare name resolves on PATH
+  # BENCH_TOOL_BINARY pins the vendor executable for this run (an absolute path),
+  # e.g. BENCH_TOOL_BINARY=$(command -v agy). Without it bashy resolves the tool
+  # inside the arm HOME, where agy 1.5 exits before its instruction (Sprint 674).
+  [ -n "${BENCH_TOOL_BINARY:-}" ] && bin=$BENCH_TOOL_BINARY
 
   # Every arm gets its own temporary HOME (run #7 was killed for live arms
   # writing into the operator's real HOME). scripts/arm_home.py seeds it with
@@ -206,27 +210,27 @@ for i in $(seq 1 "$K"); do
   armenv=(); while IFS= read -r l; do [ -n "$l" ] && armenv+=("$l"); done <<< "$armout"
   ah=$(sed -n 's/^HOME=//p' <<< "$armout")
   # Claude reads $CLAUDE_CONFIG_DIR/.claude.json (arm_home seeds it there), so
-  # the trust entry goes to the arm's config dir, not to $ah.
+  # the trust entry goes to the arm's config dir, not to $ah. agy >= 1.5 reads
+  # $GEMINI_CLI_HOME/.gemini/antigravity-cli/settings.json.
   acd=$(sed -n 's/^CLAUDE_CONFIG_DIR=//p' <<< "$armout")
-  [ -n "$ah" ] && [ -n "$acd" ] \
+  agh=$(sed -n 's/^GEMINI_CLI_HOME=//p' <<< "$armout")
+  [ -n "$ah" ] && [ -n "$acd" ] && [ -n "$agh" ] \
     || { echo "ARM ISOLATION INCOMPLETE $AGENT $TASK#$i — not launched" >&2; armdone; rm -rf "$ws"; exit 1; }
 
-  # Claude-family tools gate on a per-directory trust dialog that
+  # Claude-family tools and agy >= 1.5 gate on a per-directory trust dialog that
   # --dangerously-skip-permissions does NOT bypass. `bashy chat` launches
   # under a PTY, so the dialog appears and the session exits before its
   # instruction is delivered ("exited before its instruction was
   # delivered"), while direct `claude -p` with piped stdio skips it.
-  # Pre-seed the tool's declared trust_preseed entry for this workspace the
-  # same way the gate path does. The path must be canonical (/tmp is a
-  # symlink into /private on macOS; the symlinked form is ignored).
-  # Verified 2026-10-18: without the entry chat exits; with it the
-  # instruction is delivered. The entry is written to the ARM's
-  # $CLAUDE_CONFIG_DIR/.claude.json (explicit --home "$acd"; the helper has no
-  # default and refuses the operator HOME), merged additively into the read-only-copied config
+  # Pre-seed the workspace's canonical path (/tmp is a symlink into /private on
+  # macOS; the symlinked form is ignored) into the arm's isolated config
   # (scripts/trust_preseed.py: flock-guarded, atomic, permission-preserving,
-  # corrupt file backed aside).
+  # corrupt file backed aside, operator HOME refused).
   if [ "$("${guard[@]}" env "${armenv[@]}" bashy tool show "$tool" --field cli.launch.trust_preseed 2>/dev/null)" = .claude.json ]; then
     "${guard[@]}" python3 scripts/trust_preseed.py --workspace "$ws" --home "$acd" >/dev/null \
+      || { echo "TRUST PRESEED FAILED $AGENT $TASK#$i — not scored" >&2; armdone; rm -rf "$ws" "$ws.bashy-home"; continue; }
+  elif [ "$tool" = agy ]; then
+    "${guard[@]}" python3 scripts/trust_preseed.py --tool agy --workspace "$ws" --home "$agh" >/dev/null \
       || { echo "TRUST PRESEED FAILED $AGENT $TASK#$i — not scored" >&2; armdone; rm -rf "$ws" "$ws.bashy-home"; continue; }
   fi
 
