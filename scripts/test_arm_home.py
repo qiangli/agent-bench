@@ -275,6 +275,110 @@ class ArmHomeTest(unittest.TestCase):
         self.assertFalse((rec2 / ".claude" / ".credentials.json").exists())
         self.assertNotIn("SECRET", "".join(p.read_text(errors="replace") for p in rec2.rglob("*") if p.is_file()))
 
+    def test_agy_onboarding_seeded_synthetically_when_absent(self):
+        for tool in ("agy", "gemini"):
+            with forbid_writes(self.protected) as hits:
+                env = self.prepare(tool=tool)
+            self.assertEqual(hits, [])
+            home = Path(env["HOME"])
+            onboard = home / ".gemini" / "antigravity-cli" / "cache" / "onboarding.json"
+            self.assertTrue(onboard.is_file())
+            self.assertFalse(onboard.is_symlink())
+            self.assertEqual(stat.S_IMODE(onboard.stat().st_mode), 0o600)
+            self.assertEqual(json.loads(onboard.read_text()), {
+                "consumerOnboardingComplete": True,
+                "enterpriseOnboardingComplete": False,
+                "onboardingComplete": True,
+            })
+            manifest = json.loads((self.arm / "arm.json").read_text())
+            self.assertIn(".gemini/antigravity-cli/cache/onboarding.json (synthetic)", manifest["seeded"])
+            self.assertEqual(manifest["exceptions"], [])
+            import shutil
+            shutil.rmtree(self.arm)
+
+    def test_agy_onboarding_copies_operator_file_read_only_as_0600(self):
+        src = self.op / ".gemini" / "antigravity-cli" / "cache" / "onboarding.json"
+        src.parent.mkdir(parents=True)
+        payload = {"consumerOnboardingComplete": True, "enterpriseOnboardingComplete": True,
+                   "onboardingComplete": True}
+        src.write_text(json.dumps(payload))
+        os.chmod(src, 0o644)
+        self.snapshot = self._snap()
+        with forbid_writes(self.protected) as hits:
+            env = self.prepare(tool="agy")
+        self.assertEqual(hits, [])
+        onboard = Path(env["HOME"]) / ".gemini" / "antigravity-cli" / "cache" / "onboarding.json"
+        self.assertEqual(json.loads(onboard.read_text()), payload)
+        self.assertEqual(stat.S_IMODE(onboard.stat().st_mode), 0o600)
+        self.assertFalse(onboard.is_symlink())
+        manifest = json.loads((self.arm / "arm.json").read_text())
+        self.assertIn(".gemini/antigravity-cli/cache/onboarding.json", manifest["seeded"])
+        self.assertEqual(manifest["exceptions"], [])
+
+    def test_agy_keychain_exception_is_opt_in_and_recorded(self):
+        kc = self.op / "Library" / "Keychains"
+        kc.mkdir(parents=True)
+        (kc / "login.keychain-db").write_text("locked")
+        self.snapshot = self._snap()
+        # Off by default: no Library/Keychains link and no exceptions.
+        with mock.patch.dict(os.environ, {"BENCH_AGY_KEYCHAIN": ""}):
+            env = self.prepare(tool="agy")
+        self.assertFalse((Path(env["HOME"]) / "Library" / "Keychains").exists())
+        self.assertEqual(json.loads((self.arm / "arm.json").read_text())["exceptions"], [])
+        import shutil
+        shutil.rmtree(self.arm)
+        # Opt-in: links Library/Keychains after _no_links_out and records the exception.
+        with forbid_writes(REAL_HOMES) as hits:
+            with mock.patch.dict(os.environ, {"BENCH_AGY_KEYCHAIN": "1"}):
+                env = self.prepare(tool="agy")
+        self.assertEqual(hits, [])
+        link = Path(env["HOME"]) / "Library" / "Keychains"
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(os.path.realpath(link), os.path.realpath(kc))
+        manifest = json.loads((self.arm / "arm.json").read_text())
+        self.assertEqual(manifest["exceptions"],
+                         ["Library/Keychains -> operator login keychain (BENCH_AGY_KEYCHAIN=1)"])
+
+    def test_dag_run_block_wires_agy_onboarding_and_trust_preseed(self):
+        repo = Path(__file__).resolve().parent.parent
+        body = (repo / "DAG.md").read_text().split("### run", 1)[1].split("~~~python as grade", 1)[0]
+        start = body.index("  pre=$(mktemp")
+        block = body[start:body.index("  pid=$!", start) + len("  pid=$!")]
+        stub = (
+            "#!/bin/bash\n"
+            'case "$*" in\n'
+            '  "agent show "*"--field tool") echo agy ;;\n'
+            '  "tool show agy --field cli.binary") echo agy ;;\n'
+            '  "tool show agy --field cli.launch.trust_preseed") echo none ;;\n'
+            '  chat\\ --agent*) echo "launched (id stub-agy-1)" ;;\n'
+            "esac\n"
+        )
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(os.path.realpath(tmp))
+            stubdir = root / "bin"
+            stubdir.mkdir()
+            (stubdir / "bashy").write_text(stub)
+            os.chmod(stubdir / "bashy", 0o755)
+            script = "\n".join([
+                "set -u", 'armdone() { [ -n "${arm:-}" ] && rm -rf "$arm"; arm=; }',
+                "for i in 1; do", block, "wait $pid", 'echo "ARM=$arm"', "done"])
+            env = dict(os.environ, PATH=f"{stubdir}:{os.environ['PATH']}",
+                       BENCH_OPERATOR_HOME=str(self.op), BENCH_AGY_KEYCHAIN="",
+                       AGENT="agy-gemini4-carbon", TASK="t1-pivot", PACK="steer",
+                       pack=str(repo / "packs/steer/t1-pivot"), ws=str(self.ws),
+                       rec=str(root / "rec"), ARM_ROOT=str(root), BUDGET="10")
+            r = subprocess.run(["bash", "-c", script], cwd=repo, env=env,
+                               capture_output=True, text=True, timeout=60)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            import re
+            arm = Path(re.search(r"^ARM=(.+)$", r.stdout, re.M).group(1))
+            home = arm / arm_home.HOME_NAME
+            onboard = home / ".gemini" / "antigravity-cli" / "cache" / "onboarding.json"
+            settings = home / ".gemini" / "antigravity-cli" / "settings.json"
+            self.assertTrue(json.loads(onboard.read_text())["onboardingComplete"])
+            self.assertEqual(json.loads(settings.read_text()),
+                             {"trustedWorkspaces": [os.path.realpath(self.ws)]})
+
 
 if __name__ == "__main__":
     unittest.main()
