@@ -191,6 +191,10 @@ for i in $(seq 1 "$K"); do
   bin=$("${guard[@]}" env "${preenv[@]}" bashy tool show "$tool" --field cli.binary 2>/dev/null)
   rm -rf "$pre"
   case $bin in */*) ;; *) bin= ;; esac  # pin a managed path; a bare name resolves on PATH
+  # BENCH_TOOL_BINARY pins the vendor executable for this run (an absolute path),
+  # e.g. BENCH_TOOL_BINARY=$(command -v agy). Without it bashy resolves the tool
+  # inside the arm HOME, where agy 1.5 exits before its instruction (Sprint 674).
+  [ -n "${BENCH_TOOL_BINARY:-}" ] && bin=$BENCH_TOOL_BINARY
 
   # Every arm gets its own temporary HOME (run #7 was killed for live arms
   # writing into the operator's real HOME). scripts/arm_home.py seeds it with
