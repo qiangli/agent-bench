@@ -66,6 +66,9 @@ Each certificate pack acts as an entry barrier for a specific role or league: `l
 
 ## Running
 
+For model inference budget estimates, see
+[AWS Lambda GPU inference costs](docs/aws-lambda-gpu-inference-cost-2026-11-23.md).
+
 The runner is `DAG.md`, run with `bashy dag` (see its header for the verdict
 rules); it drives agents through `bashy chat`. The format is plain files, so any
 harness can drive it.
