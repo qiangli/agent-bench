@@ -43,6 +43,7 @@ short runner reference. A missing required run always makes the verdict fail.
 | `judge` | Agree with at least 18 of 20 planted outcomes. |
 | `l5` | Steer/points rule: PASS and at least 6.0/10. |
 | `skill-uptake` | Steer/points rule: PASS and at least 6.0/10 (discovery and format use scored per task). |
+| `shapeware` | Steer/points rule: PASS and at least 6.0/10 (3 arms `ARM=A\|B\|C` with `BASHY_BIN=`; hard rules always FAIL). |
 
 **The golden set** (`golden.txt`) has `agent band` rows, optionally followed by
 a pack name to scope a row. Calibration maps a band to expected passing packs:
@@ -123,7 +124,7 @@ sig() {
 }
 # bashy's `$!` is a job handle, not an OS pid, so a session is found by the id
 # `bashy chat` prints as it launches, never by matching the process table.
-sid() { sed -n 's/.*(id \([^)]*\)).*/\1/p' "$1" 2>/dev/null | head -1; }
+sid() { sed -n 's/.*(id \([^,)]*\).*/\1/p' "$1" 2>/dev/null | head -1; }
 # Where bashy keeps a session's screen capture: in the arm's own HOME ($ah).
 scrlog() { echo "$ah/.bashy/sessions/logs/$(printf '%s' "$1" | shasum -a 256 | cut -c1-12).log"; }
 # Wait for a session id to leave the host room: an agent is one identity, so a
@@ -135,7 +136,7 @@ gone() { for _ in $(seq 1 20); do "${guard[@]}" env "${armenv[@]}" bashy chat se
 armdone() {
   [ -n "${arm:-}" ] || return 0
   python3 scripts/arm_home.py evidence --arm-dir "$arm" --dest "${1:-$rec.arm}" \
-    && rm -rf "$arm" || echo "  ARM EVIDENCE COPY FAILED: kept $arm" >&2
+    && { chmod -R u+w "$arm" 2>/dev/null || true; rm -rf "$arm"; } || echo "  ARM EVIDENCE COPY FAILED: kept $arm" >&2
   arm=
 }
 # Every arm runs under a temporary HOME; the temp roots themselves must not be
@@ -171,7 +172,7 @@ for i in $(seq 1 "$K"); do
   # beside earlier runs' logs and results, not under the tree that holds the
   # graders and references. $rec keeps the logs, and the workspace is copied
   # there only after grading.
-  rec=$RUNS/$AGENT/$PACK-$TASK/$i
+  rec=$RUNS/$AGENT/$PACK${ARM:+-$ARM}-$TASK/$i
   rm -rf "$rec" "$rec.session.log" "$rec.screen.log" "$rec.bashy-home" "$rec.arm" "$rec".launch*.arm
   mkdir -p "$(dirname "$rec")"
   ws=$(mktemp -d "${TMPDIR:-/tmp}/bench-ws.XXXXXX")
@@ -260,15 +261,25 @@ for i in $(seq 1 "$K"); do
     *) echo "INVALID READER_VIEW $READER_VIEW" >&2; armdone; rm -rf "$ws"; exit 1 ;;
   esac
 
+  # shapeware arm selector (scripts/shapeware_arm.py): binds ARM=A|B|C to its
+  # bashy binary under test (BASHY_BIN or BASHY_BIN_<ARM>) by placing a symlink
+  # first on PATH inside the arm directory. Same prompt, budget and steer.
+  shapewareenv=()
+  if [ "$PACK" = shapeware ] && { [ -n "${ARM:-}" ] || [ -n "${BASHY_BIN:-}" ]; }; then
+    sw=$("${guard[@]}" env "${armenv[@]}" python3 scripts/shapeware_arm.py --arm-dir "$arm" --arm "${ARM:-C}" ${BASHY_BIN:+--bashy-bin "$BASHY_BIN"}) \
+      || { echo "SHAPEWARE ARM FAILED $AGENT $TASK#$i (arm ${ARM:-C})" >&2; armdone; rm -rf "$ws"; exit 1; }
+    while IFS= read -r l; do [ -n "$l" ] && shapewareenv+=("$l"); done <<< "$sw"
+  fi
+
   # A task with setup.py is seeded into an isolated store beside the workspace;
   # the agent is launched with that store's environment (see packs/floor/inbox-find).
-  iso=$("${guard[@]}" env "${armenv[@]}" python3 scripts/pack_runner.py isolate --pack "$PACK" --task "$TASK" --workspace "$ws" --agent "$AGENT") \
+  iso=$("${guard[@]}" env "${armenv[@]}" ${shapewareenv[@]+"${shapewareenv[@]}"} python3 scripts/pack_runner.py isolate --pack "$PACK" --task "$TASK" --workspace "$ws" --agent "$AGENT") \
     || { echo "SETUP FAILED $AGENT $TASK#$i" >&2; armdone; exit 1; }
   isoenv=(); while IFS= read -r l; do [ -n "$l" ] && isoenv+=("$l"); done <<< "$iso"
 
   # Only the zero-quota dry-run agent may see the reference solution.
   ref=; [ "$AGENT" = benchbot-dry ] && ref=$pack/reference
-  "${guard[@]}" env "${armenv[@]}" "${isoenv[@]}" "${helpfmt[@]}" "${viewenv[@]}" BENCH_REF=$ref BASHY_CHAT_INBOX=off ENABLE_CLAUDEAI_MCP_SERVERS=false BASHY_ALLOW_UNSAFE_AGENT_LAUNCH=1 \
+  "${guard[@]}" env "${armenv[@]}" ${shapewareenv[@]+"${shapewareenv[@]}"} "${isoenv[@]}" "${helpfmt[@]}" "${viewenv[@]}" BENCH_REF=$ref BASHY_CHAT_INBOX=off ENABLE_CLAUDEAI_MCP_SERVERS=false BASHY_ALLOW_UNSAFE_AGENT_LAUNCH=1 \
     bashy chat --agent "$AGENT" -i --yolo -m "Read TASK.md and do the task." \
       --cwd "$ws" --task "bench-$TASK-$i" --timeout "$((BUDGET + 60))s" \
       > "$rec.session.log" 2>&1 &
@@ -313,7 +324,7 @@ for i in $(seq 1 "$K"); do
     # Finished when the workspace AND the screen have been quiet for QUIET; a
     # TUI that animates while it thinks is bounded by THINK of workspace quiet,
     # and everything by BUDGET.
-    if [ $steered = 1 ] && [ $el -ge "$MIN_POST_STEER" ] && [ $((now - last)) -ge "$QUIET" ]; then
+    if [ $steered = 1 ] && [ -n "$id" ] && [ $el -ge "$MIN_POST_STEER" ] && [ $((now - last)) -ge "$QUIET" ]; then
       [ $((now - lastscr)) -ge "$QUIET" ] && break
       [ $((now - last)) -ge "$THINK" ] && { why=think-cap; break; }
     fi
@@ -331,6 +342,13 @@ for i in $(seq 1 "$K"); do
     armdone "$rec.launch$attempt.arm"
     [ "$attempt" = "$ATTEMPTS" ] && exit 1
     continue
+  fi
+  # Snapshot the agent's screen before terminating the session (bashy removes
+  # its live screen log when a session exits cleanly), then refresh if it still
+  # exists after shutdown.
+  if [ -n "$id" ]; then
+    scr=$(scrlog "$id")
+    [ -f "$scr" ] && cp "$scr" "$rec.screen.log"
   fi
   # End the session and make sure it is GONE before the next run. Some TUIs ask
   # for a second Ctrl-C, hence INT twice, then TERM, then KILL.
@@ -358,7 +376,7 @@ for i in $(seq 1 "$K"); do
     cp -R "$ws" "$rec"; rm -rf "$ws" "$ws.bashy-home"; armdone
     exit 3
   fi
-  g=$(BENCH_SESSION_LOG="$rec.session.log" BENCH_SCREEN_LOG="$rec.screen.log" python3 scripts/pack_runner.py grade --pack "$PACK" --task "$TASK" --workspace "$ws" --fixture "$pack/fixture" 2>&1 | tail -1)
+  g=$(env ${shapewareenv[@]+"${shapewareenv[@]}"} BENCH_SESSION_LOG="$rec.session.log" BENCH_SCREEN_LOG="$rec.screen.log" python3 scripts/pack_runner.py grade --pack "$PACK" --task "$TASK" --workspace "$ws" --fixture "$pack/fixture" 2>&1 | tail -1)
   # Reading the answer key is a hard-rule FAIL whatever the grade. The dry agent
   # is exempt — it is handed the reference solution — but a planted read holds
   # the rule to it too, which is how the rule is covered by the dry gate.

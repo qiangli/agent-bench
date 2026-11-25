@@ -21,16 +21,25 @@ def git(*args):
 
 
 def apply_reference(ref):
+    solve = os.path.join(ref, "solve.py")
     for root, dirs, files in os.walk(ref):
         dirs[:] = [d for d in dirs if d != "__pycache__"]
         rel = os.path.relpath(root, ref)
         os.makedirs(rel, exist_ok=True)
         for f in files:
-            if not f.endswith(".pyc"):
-                shutil.copy2(os.path.join(root, f), os.path.join(rel, f))
+            if f.endswith(".pyc") or (rel == "." and f == "solve.py"):
+                continue
+            shutil.copy2(os.path.join(root, f), os.path.join(rel, f))
+    if os.path.isfile(solve):
+        done = subprocess.run([sys.executable, solve, os.getcwd()], check=False,
+                              text=True, capture_output=True)
+        if done.stdout:
+            print(done.stdout, end="" if done.stdout.endswith("\n") else "\n", flush=True)
+        if done.stderr:
+            print(done.stderr, end="" if done.stderr.endswith("\n") else "\n", file=sys.stderr, flush=True)
     git("add", "-A")
     git("-c", "user.name=benchbot", "-c", "user.email=benchbot@example.invalid",
-        "commit", "-qm", "benchbot: reference solution")
+        "commit", "-q", "--allow-empty", "-m", "benchbot: reference solution")
 
 
 def main():

@@ -1,0 +1,27 @@
+{
+  "title": "Release Sign-off Decisions",
+  "fields": [
+    {
+      "id": "release_channel",
+      "label": "Target release channel",
+      "kind": "choice",
+      "required": true,
+      "options": ["canary", "staging", "production"],
+      "recommended": "staging"
+    },
+    {
+      "id": "rollback_window",
+      "label": "Automatic rollback window",
+      "kind": "choice",
+      "required": true,
+      "options": ["15m", "1h", "24h"],
+      "recommended": "1h"
+    },
+    {
+      "id": "notify_on_hold",
+      "label": "Notify release channel if held?",
+      "kind": "yes-no",
+      "required": true
+    }
+  ]
+}

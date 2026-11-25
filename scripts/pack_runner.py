@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKS = ROOT / "packs"
-KNOWN_PACKS = {"floor", "l1", "l2", "steer", "review", "manager", "judge", "l5", "skill-uptake"}
+KNOWN_PACKS = {"floor", "l1", "l2", "steer", "review", "manager", "judge", "l5", "skill-uptake", "shapeware"}
 
 
 def task_dirs(pack: str) -> list[Path]:
@@ -142,7 +142,7 @@ def validate(pack: str) -> int:
             seeded = bool(isolate(pack, task, work, os.environ.get("BENCH_VALIDATE_AGENT", "claude-haiku4.5")))
             untouched = grade(pack, task, work, fixture)
             if seeded:
-                subprocess.run([sys.executable, str(reference / "solve.py"), str(work) + ".bashy-home"], check=True)
+                subprocess.run([sys.executable, str(reference / "solve.py"), str(work) + ".bashy-home", str(work)], check=True)
             else:
                 overlay(reference, work)
                 action = reference / "solve.py"

@@ -1,0 +1,21 @@
+{
+  "title": "Sprint Triage Intake",
+  "fields": [
+    {
+      "id": "service",
+      "label": "Affected service",
+      "kind": "choice",
+      "required": true,
+      "options": ["api", "worker", "console"],
+      "recommended": "api"
+    },
+    {
+      "id": "severity",
+      "label": "Severity",
+      "kind": "choice",
+      "required": true,
+      "options": ["p1", "p2", "p3"],
+      "recommended": "p2"
+    }
+  ]
+}

@@ -23,6 +23,7 @@ class TaskDiscoveryTest(unittest.TestCase):
             "judge": 1,
             "l5": 6,
             "skill-uptake": 10,
+            "shapeware": 3,
         }
         for pack, count in expected_counts.items():
             with self.subTest(pack=pack):
