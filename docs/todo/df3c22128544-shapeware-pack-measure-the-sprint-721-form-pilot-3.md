@@ -3,12 +3,15 @@ id: df3c22128544
 kind: test
 title: 'shapeware pack: measure the Sprint 721 form pilot (3 arms, t1 show/read, t2 known issue, t3 tbd, hard rules)'
 seq: 5
-status: todo
+status: done
 priority: p1
 created: 2026-11-25T19:26:07.072327Z
+assignee: agy-gemini4-neon
 sprint: 721
 sprint_id: 69fc2c51-8faf-58e7-83ac-f27007837ae7
 sprint_title: 'Shapeware pilot on form: spec v0.1 layout, lifecycle, one-step launch'
+closed: 2026-11-25T20:06:47.07298Z
+closed_by: claude-opus5.5
 ---
 
 Sprint 721 pilot P2 (story 9643d77f in bashy is the pilot; this story is its measurement pack). Operator approved running P2 on 2026-11-25. Spec: umbrella docs/shapeware-spec-v0.md v0.1; baseline: bashy todo 9643d77f addendum (e) (about 20 tool calls to show a form, 4 defects, 1 miss).
