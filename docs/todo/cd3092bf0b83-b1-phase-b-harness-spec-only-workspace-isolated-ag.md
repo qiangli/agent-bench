@@ -3,11 +3,13 @@ id: cd3092bf0b83
 kind: task
 title: 'B1 Phase B harness: spec-only workspace, isolated agent run, snapshot + grade with conform'
 seq: 763
-status: todo
+status: assigned
 priority: p2
 labels:
     - conform
 created: 2026-11-25T21:22:19.575687Z
+weave: 6
+assignee: codex-gpt6-sol
 sprint: 722
 sprint_id: ffc7a05d-4229-598a-8834-4c1212246274
 sprint_title: 'dhnt/conform, then: does the spec reproduce the app?'
@@ -56,6 +58,4 @@ Interface (public pack, private grading):
 - Do not touch packs/shapeware.
 
 Verify: the pack self-check and `python3 -m pytest scripts/test_pack_runner.py` (or
-the repo's test entry) pass. Commit trailers Sprint: #722 / Story: #<seq> /
-Story-ID: cd3092bf0b83. Keep it to about 40 minutes.
-
+the repo's test entry) pass. Use the usual Sprint/Story/Story-ID commit trailers for this story. Keep it to about 40 minutes.
