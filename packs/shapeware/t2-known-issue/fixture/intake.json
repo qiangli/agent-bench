@@ -10,6 +10,14 @@
       "recommended": "api"
     },
     {
+      "id": "topics",
+      "label": "Affected topics",
+      "kind": "multi",
+      "required": true,
+      "options": ["news", "events", "offers"],
+      "recommended": "news"
+    },
+    {
       "id": "severity",
       "label": "Severity",
       "kind": "choice",

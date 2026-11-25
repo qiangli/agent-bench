@@ -172,7 +172,7 @@ for i in $(seq 1 "$K"); do
   # beside earlier runs' logs and results, not under the tree that holds the
   # graders and references. $rec keeps the logs, and the workspace is copied
   # there only after grading.
-  rec=$RUNS/$AGENT/$PACK${ARM:+-$ARM}-$TASK/$i
+  rec=$RUNS/$AGENT/$PACK${ARM:+-$ARM}${RUNG:+-$RUNG}-$TASK/$i
   rm -rf "$rec" "$rec.session.log" "$rec.screen.log" "$rec.bashy-home" "$rec.arm" "$rec".launch*.arm
   mkdir -p "$(dirname "$rec")"
   ws=$(mktemp -d "${TMPDIR:-/tmp}/bench-ws.XXXXXX")
@@ -263,12 +263,14 @@ for i in $(seq 1 "$K"); do
 
   # shapeware arm selector (scripts/shapeware_arm.py): binds ARM=A|B|C to its
   # bashy binary under test (BASHY_BIN or BASHY_BIN_<ARM>) by placing a symlink
-  # first on PATH inside the arm directory. Same prompt, budget and steer.
+  # first on PATH inside the arm directory, and forwards optional RUNG=L1..L4.
   shapewareenv=()
   if [ "$PACK" = shapeware ] && { [ -n "${ARM:-}" ] || [ -n "${BASHY_BIN:-}" ]; }; then
-    sw=$("${guard[@]}" env "${armenv[@]}" python3 scripts/shapeware_arm.py --arm-dir "$arm" --arm "${ARM:-C}" ${BASHY_BIN:+--bashy-bin "$BASHY_BIN"}) \
+    sw=$("${guard[@]}" env "${armenv[@]}" python3 scripts/shapeware_arm.py --arm-dir "$arm" --arm "${ARM:-C}" ${BASHY_BIN:+--bashy-bin "$BASHY_BIN"} ${BASHY_FORM_DIR:+--form-dir "$BASHY_FORM_DIR"} ${RUNG:+--rung "$RUNG"}) \
       || { echo "SHAPEWARE ARM FAILED $AGENT $TASK#$i (arm ${ARM:-C})" >&2; armdone; rm -rf "$ws"; exit 1; }
     while IFS= read -r l; do [ -n "$l" ] && shapewareenv+=("$l"); done <<< "$sw"
+  elif [ "$PACK" = shapeware ] && [ -n "${RUNG:-}" ]; then
+    shapewareenv+=("BENCH_RUNG=$RUNG")
   fi
 
   # A task with setup.py is seeded into an isolated store beside the workspace;
