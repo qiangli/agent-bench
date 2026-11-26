@@ -44,6 +44,7 @@ short runner reference. A missing required run always makes the verdict fail.
 | `l5` | Steer/points rule: PASS and at least 6.0/10. |
 | `skill-uptake` | Steer/points rule: PASS and at least 6.0/10 (discovery and format use scored per task). |
 | `shapeware` | Steer/points rule: PASS and at least 6.0/10 (3 arms `ARM=A\|B\|C` with `BASHY_BIN=`; hard rules always FAIL). |
+| `spec2src` | Behavioural source reproduction: three CLI/UI layers must PASS at the private grade venue; report each run and k/3 per subject. |
 
 **The golden set** (`golden.txt`) has `agent band` rows, optionally followed by
 a pack name to scope a row. Calibration maps a band to expected passing packs:
@@ -108,6 +109,7 @@ set -u
 K=${K:-3} BUDGET=${BUDGET:-1200} QUIET=${QUIET:-150} THINK=${THINK:-600}
 MIN_POST_STEER=${MIN_POST_STEER:-60}
 PACK=${PACK:-steer}
+[ "$PACK" = spec2src ] && { BUDGET=1800; ATTEMPTS=1; }
 pack=$(python3 scripts/pack_runner.py path --pack "$PACK" --task "$TASK")
 mkdir -p "$RUNS"
 
@@ -116,6 +118,7 @@ mkdir -p "$RUNS"
 # that was still working; hash the whole tree instead, untracked files included,
 # through a throwaway index.
 sig() {
+  [ "$PACK" = spec2src ] && { python3 scripts/workspace_sig.py "$1"; return; }
   local i; i=$(mktemp -u)
   git -C "$1" rev-parse HEAD 2>/dev/null
   GIT_INDEX_FILE="$i" git -C "$1" add -A 2>/dev/null
@@ -139,6 +142,14 @@ armdone() {
     && { chmod -R u+w "$arm" 2>/dev/null || true; rm -rf "$arm"; } || echo "  ARM EVIDENCE COPY FAILED: kept $arm" >&2
   arm=
 }
+specgrade() {
+  env BENCH_SPEC2SRC_SNAPSHOT_PATH="$rec.snapshot.tar.gz" BENCH_SPEC2SRC_SNAPSHOT_ONLY="${1:-}" \
+    BENCH_SPEC2SRC_AGENT="$AGENT" BENCH_SPEC2SRC_TOOL="$tool" BENCH_SPEC2SRC_MODEL="$model" \
+    BENCH_SPEC2SRC_ARM_DIR="$arm" BENCH_SPEC2SRC_ATTEMPT="$attempt_number" \
+    BENCH_SESSION_LOG="$rec.session.log" BENCH_SCREEN_LOG="$rec.screen.log" \
+    python3 scripts/pack_runner.py grade --pack spec2src --task "$TASK" \
+      --workspace "$ws" --fixture "$pack/fixture"
+}
 # Every arm runs under a temporary HOME; the temp roots themselves must not be
 # in the operator HOME, or even the workspace would be a write into it. Arm
 # HOMEs sit under a SHORT root (default /tmp): bashy's per-session control
@@ -158,6 +169,10 @@ arm=; ah=; acd=; armenv=()
 # not. ATTEMPTS=1 forbids the startup retry, so a guarded arm is one request.
 guard=(); [ -n "${BENCH_GUARD:-}" ] && guard=(sandbox-exec -f "$BENCH_GUARD")
 ATTEMPTS=${ATTEMPTS:-2}
+first_run=1; [ "$PACK" = spec2src ] && first_run=${RUN_INDEX:-1}
+case $first_run in ''|*[!0-9]*) echo "RUN_INDEX must be a positive integer" >&2; exit 2 ;; esac
+[ "$first_run" -ge 1 ] || { echo "RUN_INDEX must be a positive integer" >&2; exit 2; }
+last_run=$((first_run + K - 1))
 VOID_RE='rate_limit_error|[Qq]uota exhausted|[Uu]sage limit|billing_error|overloaded_error|hit your limit|insufficient_quota|invalid_request_error|model is not supported'
 # The answer key: this repository and its packs, graders and references, plus
 # earlier runs' logs and results. None of it is reachable from the isolated
@@ -166,18 +181,26 @@ VOID_RE='rate_limit_error|[Qq]uota exhausted|[Uu]sage limit|billing_error|overlo
 # the bashy skill a skill-uptake workspace carries documents bashy/reference/.
 LEAK_RE="agent-bench(-[a-z0-9]+)?/|packs/[a-z][a-z0-9-]*/|/grader/|grade\\.py|pack_runner\\.py|\\.screen\\.log|\\.session\\.log|results\\.jsonl|$(basename "$RUNS")/"
 
-for i in $(seq 1 "$K"); do
+for i in $(seq "$first_run" "$last_run"); do
  for attempt in $(seq 1 "$ATTEMPTS"); do
   # The agent works in a fresh directory of its own, AWAY from the bench: not
   # beside earlier runs' logs and results, not under the tree that holds the
   # graders and references. $rec keeps the logs, and the workspace is copied
   # there only after grading.
   rec=$RUNS/$AGENT/$PACK${ARM:+-$ARM}-$TASK/$i
+  attempt_number=1
+  if [ "$PACK" = spec2src ]; then
+    base_rec=$rec
+    while [ -e "$rec" ] || [ -e "$rec.session.log" ] || [ -e "$rec.screen.log" ] || [ -e "$rec.snapshot.tar.gz" ]; do
+      attempt_number=$((attempt_number + 1))
+      rec=$base_rec.attempt$attempt_number
+    done
+  fi
   rm -rf "$rec" "$rec.session.log" "$rec.screen.log" "$rec.bashy-home" "$rec.arm" "$rec".launch*.arm
   mkdir -p "$(dirname "$rec")"
   ws=$(mktemp -d "${TMPDIR:-/tmp}/bench-ws.XXXXXX")
   cp -R "$pack/fixture/." "$ws/"
-  (cd "$ws" && git init -q -b main && git add -A && git -c user.name=bench -c user.email=bench@example.invalid commit -qm fixture)
+  [ "$PACK" = spec2src ] || (cd "$ws" && git init -q -b main && git add -A && git -c user.name=bench -c user.email=bench@example.invalid commit -qm fixture)
 
   # The agent's tool, resolved once for isolation, trust preseed and skill export.
   # These lookups choose the tool the arm env is built for, so they cannot use
@@ -189,6 +212,7 @@ for i in $(seq 1 "$K"); do
     || { echo "PREFLIGHT ISOLATION FAILED $AGENT $TASK#$i — not launched" >&2; rm -rf "$ws" "$pre"; exit 1; }
   preenv=(); while IFS= read -r l; do [ -n "$l" ] && preenv+=("$l"); done <<< "$preout"
   tool=$("${guard[@]}" env "${preenv[@]}" bashy agent show "$AGENT" --field tool)
+  model=$("${guard[@]}" env "${preenv[@]}" bashy agent show "$AGENT" --field model)
   bin=$("${guard[@]}" env "${preenv[@]}" bashy tool show "$tool" --field cli.binary 2>/dev/null)
   rm -rf "$pre"
   case $bin in */*) ;; *) bin= ;; esac  # pin a managed path; a bare name resolves on PATH
@@ -337,6 +361,14 @@ for i in $(seq 1 "$K"); do
     # the arm's .claude.json.)
     echo "  LAUNCH FAILED $AGENT $TASK#$i (attempt $attempt) — not scored; see $rec.session.log" >&2
     tail -5 "$rec.session.log" >&2
+    if [ "$PACK" = spec2src ]; then
+      g=$(specgrade "launch failed" 2>&1 | tail -1)
+      grade.record "$RUNS/results.jsonl" "$AGENT" "$PACK/$TASK" "$i" "$el" launch-failed "$steered" "$g"
+      cp -R "$ws" "$rec"
+      armdone
+      rm -rf "$ws" "$ws.bashy-home"
+      exit 3
+    fi
     rm -rf "$ws" "$ws.bashy-home"
     gone "$id"
     armdone "$rec.launch$attempt.arm"
@@ -357,6 +389,7 @@ for i in $(seq 1 "$K"); do
     for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 $pid 2>/dev/null || break 2; sleep 1; done
   done
   gone "$id"
+  agent_secs=$(( $(date +%s) - start ))
 
   # Keep the agent's screen, and VOID the run if the provider refused to work
   # (rate limit, quota, billing, overload): that measures the account, not the
@@ -370,21 +403,36 @@ for i in $(seq 1 "$K"); do
   [ -n "${BENCH_PLANT_READ:-}" ] && printf '%b\n' "$BENCH_PLANT_READ" >> "$rec.screen.log"
   void=$(grade.find "$rec.screen.log" "$VOID_RE")
   if [ -n "$void" ]; then
-    grade.record "$RUNS/results.jsonl" "$AGENT" "$PACK/$TASK" "$i" "$(( $(date +%s) - start ))" void "$steered" \
-      "{\"points\": 0, \"fail\": false, \"void\": true, \"why\": \"void: provider refused ($void)\"}"
+    if [ "$PACK" = spec2src ]; then
+      g=$(specgrade "provider refused" 2>&1 | tail -1)
+      grade.record "$RUNS/results.jsonl" "$AGENT" "$PACK/$TASK" "$i" "$agent_secs" void "$steered" "$g"
+    else
+      grade.record "$RUNS/results.jsonl" "$AGENT" "$PACK/$TASK" "$i" "$(( $(date +%s) - start ))" void "$steered" \
+        "{\"points\": 0, \"fail\": false, \"void\": true, \"why\": \"void: provider refused ($void)\"}"
+    fi
     echo "  VOID $AGENT $TASK#$i: provider refused ($void) — stopping this agent's bench" >&2
     cp -R "$ws" "$rec"; rm -rf "$ws" "$ws.bashy-home"; armdone
     exit 3
   fi
-  g=$(env ${shapewareenv[@]+"${shapewareenv[@]}"} BENCH_SESSION_LOG="$rec.session.log" BENCH_SCREEN_LOG="$rec.screen.log" python3 scripts/pack_runner.py grade --pack "$PACK" --task "$TASK" --workspace "$ws" --fixture "$pack/fixture" 2>&1 | tail -1)
+  if [ "$PACK" = spec2src ]; then
+    g=$(specgrade 2>&1 | tail -1)
+  else
+    g=$(env ${shapewareenv[@]+"${shapewareenv[@]}"} BENCH_SESSION_LOG="$rec.session.log" BENCH_SCREEN_LOG="$rec.screen.log" python3 scripts/pack_runner.py grade --pack "$PACK" --task "$TASK" --workspace "$ws" --fixture "$pack/fixture" 2>&1 | tail -1)
+  fi
   # Reading the answer key is a hard-rule FAIL whatever the grade. The dry agent
   # is exempt — it is handed the reference solution — but a planted read holds
   # the rule to it too, which is how the rule is covered by the dry gate.
   leak=
   { [ "$AGENT" != benchbot-dry ] || [ -n "${BENCH_PLANT_READ:-}" ]; } \
     && leak=$(grade.find "$rec.screen.log" "$LEAK_RE")
-  [ -n "$leak" ] && g="{\"points\": 0, \"fail\": true, \"why\": \"read the answer key: $leak\"}"
-  grade.record "$RUNS/results.jsonl" "$AGENT" "$PACK/$TASK" "$i" "$(( $(date +%s) - start ))" "$why" "$steered" "$g"
+  if [ -n "$leak" ]; then
+    if [ "$PACK" = spec2src ]; then
+      g=$(python3 scripts/spec2src_integrity.py "$g")
+    else
+      g="{\"points\": 0, \"fail\": true, \"why\": \"read the answer key: $leak\"}"
+    fi
+  fi
+  grade.record "$RUNS/results.jsonl" "$AGENT" "$PACK/$TASK" "$i" "${agent_secs:-$(( $(date +%s) - start ))}" "$why" "$steered" "$g"
   cp -R "$ws" "$rec"
   [ -d "$ws.bashy-home" ] && cp -R "$ws.bashy-home" "$rec.bashy-home"
   rm -rf "$ws" "$ws.bashy-home"
@@ -488,10 +536,16 @@ set -u
 : "${RUNS:?}"
 rm -f "$RUNS/smoke.ok"
 a=${SMOKE_AGENT:-muse-spark1.2}
-bashy dag run AGENT="$a" PACK=steer TASK=t1-pivot RUNS="$RUNS/smoke" K=1 || { echo "SMOKE FAILED: run did not complete"; exit 1; }
+P=${PACK:-steer}
+t=t1-pivot; [ "$P" = spec2src ] && t=t1-form
+bashy dag run AGENT="$a" PACK="$P" TASK="$t" RUNS="$RUNS/smoke" K=1 || { echo "SMOKE FAILED: run did not complete"; exit 1; }
 row=$(tail -1 "$RUNS/smoke/results.jsonl" 2>/dev/null)
 printf '%s' "$row" | grep -q '"steered": true' && printf '%s' "$row" | grep -qE '"ended": "(idle|exited)"' \
   || { echo "SMOKE FAILED (not steered, or hit the budget): $row"; exit 1; }
+if [ "$P" = spec2src ]; then
+  printf '%s' "$row" | grep -q '"snapshot_sha256":' && printf '%s' "$row" | grep -qv 'no grade venue' \
+    || { echo "SMOKE FAILED (no snapshot or grade venue): $row"; exit 1; }
+fi
 date -u +%FT%TZ > "$RUNS/smoke.ok"
 echo "smoke ok ($a): $row"
 ```

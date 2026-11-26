@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKS = ROOT / "packs"
-KNOWN_PACKS = {"floor", "l1", "l2", "steer", "review", "manager", "judge", "l5", "skill-uptake", "shapeware"}
+KNOWN_PACKS = {"floor", "l1", "l2", "steer", "review", "manager", "judge", "l5", "skill-uptake", "shapeware", "spec2src"}
 
 
 def task_dirs(pack: str) -> list[Path]:
@@ -181,6 +181,23 @@ def read_rows(path: Path) -> list[dict]:
 def certificate(pack: str, rows: list[dict], agent: str, k: int) -> tuple[bool, str, float, list[str]]:
     tasks = [f"{pack}/{name}" for name in task_names(pack)]
     mine = [row for row in rows if row.get("agent") == agent]
+    if pack == "spec2src":
+        # A rerun of an inconclusive venue cell retains the first attempt in
+        # results.jsonl, then uses the latest conclusive attempt for that cell.
+        cells: dict[int, dict] = {}
+        for row in mine:
+            if row.get("task") != tasks[0]:
+                continue
+            run = row.get("run")
+            if isinstance(run, int) and 1 <= run <= k:
+                previous = cells.get(run)
+                if previous is None or previous.get("verdict") == "INCONCLUSIVE":
+                    cells[run] = row
+        missing = [f"{tasks[0]}({len(cells)}/{k})"] if len(cells) < k else []
+        passes = sum(row.get("verdict") == "PASS" and row.get("points") == 2
+                     and not row.get("fail") for row in cells.values())
+        passed = not missing and passes == k
+        return passed, f"{passes}/{k} PASS", round(10 * passes / k, 1), missing
     missing = [f"{task}({len([r for r in mine if r.get('task') == task])}/{k})" for task in tasks if len([r for r in mine if r.get("task") == task]) < k]
     hard = [row for row in mine if row.get("fail")]
     if pack == "judge":

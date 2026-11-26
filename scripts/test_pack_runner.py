@@ -24,6 +24,7 @@ class TaskDiscoveryTest(unittest.TestCase):
             "l5": 6,
             "skill-uptake": 10,
             "shapeware": 3,
+            "spec2src": 1,
         }
         for pack, count in expected_counts.items():
             with self.subTest(pack=pack):
@@ -33,6 +34,25 @@ class TaskDiscoveryTest(unittest.TestCase):
         self.assertTrue(all(not (task / "task.yaml").exists() for task in steer))
         self.assertTrue(all((task / "grader" / "grade.py").is_file() for task in steer))
         self.assertEqual(pack_runner.task_dirs("judge"), [pack_runner.PACKS / "judge"])
+
+    def test_spec2src_certificate_counts_three_cells_and_venue_rerun(self):
+        rows = [
+            {"agent": "a", "task": "spec2src/t1-form", "run": 1,
+             "verdict": "INCONCLUSIVE", "points": 0, "fail": False},
+            {"agent": "a", "task": "spec2src/t1-form", "run": 1,
+             "verdict": "PASS", "points": 2, "fail": False},
+            {"agent": "a", "task": "spec2src/t1-form", "run": 2,
+             "verdict": "PASS", "points": 2, "fail": False},
+            {"agent": "a", "task": "spec2src/t1-form", "run": 3,
+             "verdict": "PASS", "points": 2, "fail": False},
+        ]
+        self.assertEqual(pack_runner.certificate("spec2src", rows, "a", 3),
+                         (True, "3/3 PASS", 10.0, []))
+        rows[-1]["verdict"] = "FAIL"
+        rows[-1]["points"] = 0
+        rows[-1]["fail"] = True
+        self.assertEqual(pack_runner.certificate("spec2src", rows, "a", 3),
+                         (False, "2/3 PASS", 6.7, []))
 
     def test_empty_pack_is_an_error_for_validate_and_verdict(self):
         with tempfile.TemporaryDirectory() as temp:
