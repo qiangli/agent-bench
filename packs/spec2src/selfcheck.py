@@ -17,7 +17,8 @@ PACK = Path(__file__).resolve().parent
 TASK = PACK / "t1-form"
 GRADER = TASK / "grader" / "grade.py"
 RUNNER = PACK.parents[1] / "scripts" / "pack_runner.py"
-FILES = ("CONTRACT.md", "SKILL.md", "features.yaml", "examples/contact.json", "TASK.md")
+FILES = ("CONTRACT.md", "SKILL.md", "features.yaml", "examples/contact.json",
+         "examples/contact.yaml", "TASK.md")
 
 
 def check(condition: bool, message: str) -> None:

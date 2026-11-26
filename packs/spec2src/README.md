@@ -1,8 +1,10 @@
 # spec2src: form from its public spec
 
-`t1-form/fixture/` is the complete initial subject workspace. Its five files
-are pinned in `task.yaml`; the four source documents are copied byte for byte
-from the pinned bashy `examples/desk/form`. The subject writes source and an
+`t1-form/fixture/` is the complete initial subject workspace. Its six files
+are pinned in `task.yaml`; the five source documents are copied byte for byte
+from the pinned bashy `examples/desk/form` (spec v2). `TASK.md` tells the
+subject that the judge's `conform` is on its PATH, so the venue must put a
+standalone `conform` binary there. The subject writes source and an
 executable `./form` launcher. The runner starts this pack without Git metadata
 in the subject workspace and caps the agent session at 30 minutes.
 
