@@ -48,15 +48,28 @@ def exercise(root):
     assert untouched["verdict"] == "FAIL" and untouched["why"].startswith("install:"), untouched
     assert untouched["report"] is None, untouched
 
-    subprocess.run(["sh", str(TASK / "reference/operate.sh"), str(workspace)],
+    subprocess.run(["/bin/sh", str(TASK / "reference/operate.sh"), str(workspace)],
                    env=env, check=True, stdout=subprocess.DEVNULL, timeout=30)
     passed = grade(BENCH_SPEC2SRC_ARM_DIR=str(root), HOME=str(root / "grader-home"),
                    DISPLAY="test", WAYLAND_DISPLAY="test")
-    assert passed["layers"] == dict.fromkeys(("protected", "install", "contract", "run", "serve"),
-                                             "PASS"), passed
+    assert passed["layers"] == dict.fromkeys(
+        ("protected", "install", "contract", "run", "serve", "stopped"), "PASS"), passed
     assert (passed["verdict"], passed["points"], passed["fail"], passed["void"]) == (
         "PASS", 2, False, False), passed
-    assert passed["report"] == dict(build=0, test=0, install=0, run=0, serve=143), passed
+    assert {k: passed["report"][k] for k in ("build", "test", "install", "run", "stop")} == dict(
+        build=0, test=0, install=0, run=0, stop=0), passed
+
+    # A page that still answers at the recorded url fails the stopped check.
+    live = json.loads(subprocess.check_output(
+        ["./form", "add", "--id", "left-running", "--definition",
+         '[{"id":"q","label":"Q","kind":"text"}]', "--json"], cwd=workspace, env=env, timeout=30))
+    recorded = (workspace / "answer.json").read_text()
+    (workspace / "answer.json").write_text(json.dumps({**json.loads(recorded), "url": live["url"]}))
+    running = grade()
+    assert running["verdict"] == "FAIL" and running["layers"]["stopped"] == "FAIL", running
+    subprocess.run(["./form", "stop"], cwd=workspace, env=env, check=True,
+                   stdout=subprocess.DEVNULL, timeout=30)
+    (workspace / "answer.json").write_text(recorded)
 
     dag = workspace / "dag.md"
     original = dag.read_bytes()

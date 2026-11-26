@@ -3,7 +3,9 @@ This directory is the `form` app, already built from its spec. `dag.md` is its l
 1. `build`.
 2. `test`.
 3. `install`, to the default place.
-4. `run`, with `ARGS='add --id drill-1 --def examples/contact.json --json'`. Save what it prints to `answer.json` in this directory.
-5. `serve`: start it, fetch the page at the `url` given in `answer.json` with `curl` and save it to `page.html` in this directory, then stop the service.
+4. `serve`: start it and leave it running while you do steps 5 and 6.
+5. `run`, with `ARGS='add --id drill-1 --def examples/contact.json --json'`. Save what it prints to `answer.json` in this directory.
+6. Fetch the page at the `url` given in `answer.json` with `curl` and save it to `page.html` in this directory.
+7. `stop`. After it, the service must no longer be running.
 
 Then write `report.txt` in this directory: one line per step, the step name and its exit status.

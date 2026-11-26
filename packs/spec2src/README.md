@@ -39,10 +39,12 @@ For the fixed protocol, schedule one cell at a time with `K=1` and
 pack runs.
 
 In `t2-operate`, the subject has 15 minutes to operate the supplied form app
-by running the build, test, install, run and serve blocks from `dag.md`.
+by running the blocks of `dag.md` in this order: build, test, install, serve,
+run, fetch the page, stop.
 The grader compares every original file with the fixture, checks the installed
 launcher, runs the contract against it, verifies the pending form in
-`answer.json` and checks the fetched page for every contact field label.
+`answer.json`, checks the fetched page for every contact field label, and
+checks that the page no longer answers after the stop step.
 It records the step statuses from `report.txt` separately from the score.
 The shell control in `reference/operate.sh` performs the same steps without a
 model. Run `python3 packs/spec2src/t2-operate/selfcheck.py` for the offline

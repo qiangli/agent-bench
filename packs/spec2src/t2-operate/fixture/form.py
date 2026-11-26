@@ -1,188 +1,216 @@
 #!/usr/bin/env python3
-import argparse, html, http.server, json, os, re, secrets, socket, subprocess, sys, time, urllib.parse, webbrowser
+import sys, os, json, re, time, uuid, socket, subprocess, signal, html, urllib.parse, argparse, datetime, shutil
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
-ROOT = Path.home()/'.local/share/form'
-ROOT.mkdir(parents=True, exist_ok=True)
-VERSION='bashy-form-v1'
-def fail(s):
-    print('error: '+s, file=sys.stderr); sys.exit(1)
-def path(id):
-    if not re.fullmatch(r'[A-Za-z0-9_.-]+',id) or id in ('.','..'): raise ValueError('invalid id')
-    return ROOT/(id+'.json')
-def load(id):
-    try: return json.loads(path(id).read_text())
-    except (OSError, ValueError): raise ValueError('form not found: '+id)
-def save(f):
-    p=path(f['id']); tmp=p.with_suffix('.tmp.'+str(os.getpid())); tmp.write_text(json.dumps(f)); os.replace(tmp,p)
-def port():
+ROOT=Path.home()/'.form'; ROOT.mkdir(mode=0o700,parents=True,exist_ok=True)
+STORE=ROOT/'forms.json'; SERVER=ROOT/'server.json'; VERSION='bashy-form-v1'
+def read():
+    try: return json.loads(STORE.read_text())
+    except FileNotFoundError: return {}
+def write(data):
+    temp=ROOT/('forms.'+str(os.getpid())+'.tmp'); temp.write_text(json.dumps(data)); os.replace(temp,STORE)
+def serverinfo():
     try:
-        p=int((ROOT/'port').read_text())
-        with socket.create_connection(('127.0.0.1',p),timeout=.2): return p
-    except (OSError, ValueError): pass
-    with socket.socket() as s:
-        s.bind(('127.0.0.1',0)); p=s.getsockname()[1]
-    subprocess.Popen([sys.executable,os.path.abspath(__file__),'serve','--port',str(p)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+        s=json.loads(SERVER.read_text()); sock=socket.create_connection(('127.0.0.1',s['port']),timeout=.3); sock.close(); return s
+    except (OSError,ValueError,KeyError): return None
+def ensure():
+    s=serverinfo()
+    if s: return s
+    subprocess.Popen([sys.executable,os.path.abspath(__file__),'serve'],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
     for _ in range(100):
-        try:
-            with socket.create_connection(('127.0.0.1',p),timeout=.1): return p
-        except OSError: time.sleep(.03)
+        time.sleep(.05); s=serverinfo()
+        if s: return s
     raise ValueError('could not start server')
-def url(f): return 'http://localhost:%s/?id=%s'%(port(),urllib.parse.quote(f['id']))
-def output(f,args,mode='show'):
-    d={'schema_version':VERSION,'id':f['id'],'status':f['status'],'url':url(f)}
-    if mode != 'open':
-        d.update(title=f['title'],definition=f['definition'],answers=f.get('answers',{}),respondents=f.get('respondents','one'))
-        if f.get('close_at'): d['close_at']=f['close_at']
-    if mode=='add':
-        d['ownerKey']=f['ownerKey']; d['inviteURL']=d['url']; d['opened']=bool(args.open)
-        if args.open: d['openedURL']=d['url']
-    if getattr(args, 'open', False):
-        try: webbrowser.open(d['url'], new=2)
-        except Exception: pass
-    if args.fields:
-        d={k:d[k] for k in args.fields.split(',') if k in d and k!='schema_version'} | {'schema_version':VERSION}
-    print(json.dumps(d,separators=(',',':')) if args.json else json.dumps(d,indent=2))
+def url(id):
+    s=serverinfo() or ensure(); return 'http://localhost:%s/?id=%s'%(s['port'],urllib.parse.quote(id))
+def open_browser(address):
+    command = shutil.which('xdg-open') or shutil.which('open')
+    if command:
+        try: subprocess.Popen([command,address],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+        except OSError: pass
+
+def output(obj,args):
+    obj=dict(obj); obj['schema_version']=VERSION
+    if args.fields is not None: obj={k:obj[k] for k in ['schema_version']+args.fields.split(',') if k in obj}
+    if args.json: print(json.dumps(obj,separators=(',',':')))
+    else: print(json.dumps(obj,indent=2))
 def scalar(s):
     s=s.strip()
+    if s in ('true','false'): return s=='true'
     if s.startswith('[') and s.endswith(']'):
         return [scalar(x) for x in s[1:-1].split(',') if x.strip()]
-    if s in ('true','false'): return s=='true'
-    if len(s)>1 and s[0]==s[-1] and s[0] in "\"'": return s[1:-1]
+    if len(s)>=2 and s[0] in "\"'" and s[-1]==s[0]:
+        return json.loads(s) if s[0]=='"' else s[1:-1].replace("''", "'")
     return s
-def definition_file(filename):
-    data=Path(filename).read_text()
-    if not filename.lower().endswith(('.yaml','.yml')): return json.loads(data)
-    result={'fields':[]}; current=None
-    for line in data.splitlines():
+def yaml_simple(text):
+    obj={}; fields=[]; current=None; in_fields=False
+    for line in text.splitlines():
         line=line.strip()
-        if not line or line.startswith('#') or line=='fields:': continue
-        if line.startswith('- '): current={}; result['fields'].append(current); line=line[2:]
-        if ':' in line:
-            k,v=line.split(':',1)
-            (current if current is not None else result)[k.strip()]=scalar(v)
-    return result
+        if not line or line.startswith('#'): continue
+        if line=='fields:': in_fields=True; obj['fields']=fields; continue
+        if line.startswith('- '): current={}; fields.append(current); line=line[2:]
+        if ':' not in line: continue
+        k,v=line.split(':',1)
+        (current if in_fields and current is not None else obj)[k.strip()]=scalar(v)
+    return obj
+def definition(args):
+    if args.poll:
+        return args.poll,[{'id':'vote','label':args.poll,'kind':'choice','options':args.options.split(',') if args.options else [],'required':True}]
+    if args.definition: data=json.loads(args.definition)
+    elif args.def_file:
+        content=Path(args.def_file).read_text(); data=yaml_simple(content) if args.def_file.lower().endswith(('.yaml','.yml')) else json.loads(content)
+    else: raise ValueError('a definition is required')
+    return (data.get('title',''),data.get('fields',[])) if isinstance(data,dict) else ('',data)
 def validate(fields):
-    if not isinstance(fields,list): raise ValueError('definition must contain fields')
+    if not isinstance(fields,list): raise ValueError('fields must be an array')
     for f in fields:
         id=f.get('id',''); kind=f.get('kind','')
         if kind=='secret' or re.search(r'password|passwd|secret|credential|api[_-]?key|access[_-]?token|private[_-]?key',id,re.I): raise ValueError('Secret fields are refused here')
         if kind not in ('text','textarea','choice','multi','yes-no','file'): raise ValueError('field "%s": unknown kind "%s"'%(id,kind))
         if not id or not f.get('label'): raise ValueError('field requires id and label')
-def answers_update(f, vals, complete):
-    a=f.setdefault('answers',{}); a.update(vals)
+def update_answers(form, answers, complete):
+    fields={f['id']:f for f in form['definition']}
+    for k,v in answers.items():
+        if k not in fields: raise ValueError('unknown field: '+k)
+        f=fields[k]; kind=f['kind']
+        if kind=='multi' and isinstance(v,str): v=[x for x in v.split(',') if x]
+        if kind in ('choice','multi'):
+            for x in (v if isinstance(v,list) else [v]):
+                if x and x not in f.get('options',[]): raise ValueError('value is not one of its options')
+        if kind=='yes-no' and v not in ('yes','no','',True,False): raise ValueError('expected yes or no')
+        form['answers'][k]=v
     if complete:
-        missing=[x['label'] for x in f['definition'] if x.get('required') and not a.get(x['id'])]
-        if missing: raise ValueError('required fields missing: '+', '.join(missing))
-        f['status']='answered'
-    save(f)
-def render(f, error=''):
-    esc=lambda x:html.escape(str(x),quote=True)
-    out=['<!doctype html><html><head><meta charset="utf-8"><title>'+esc(f['title'])+'</title></head><body><h1>'+esc(f['title'])+'</h1>']
-    if error: out.append('<p role="alert">'+esc(error)+'</p>')
-    out.append('<form method="post" action="/?id='+esc(urllib.parse.quote(f['id']))+'">')
-    for x in f['definition']:
-        id=esc(x['id']); label=esc(x['label']); k=x['kind']; val=f.get('answers',{}).get(x['id'],''); req=' required' if x.get('required') else ''
-        out.append('<div><label for="'+id+'">'+label+'</label>')
-        if k=='textarea': out.append('<textarea id="'+id+'" name="'+id+'"'+req+'>'+esc(val)+'</textarea>')
-        elif k in ('choice','multi','yes-no'):
-            out.append('<select id="'+id+'" name="'+id+'"'+(' multiple' if k=='multi' else '')+req+'>')
-            if k!='multi': out.append('<option value=""></option>')
-            for opt in (['yes','no'] if k=='yes-no' else x.get('options',[])):
+        for f in fields.values():
+            if f.get('required') and form['answers'].get(f['id']) in (None,'',[]): raise ValueError('required field missing: '+f['id'])
+        form['status']='answered'
+def page(form):
+    e=lambda x:html.escape(str(x),quote=True)
+    parts=['<!doctype html><html><head><meta charset="utf-8"><title>'+e(form['title'])+'</title></head><body><h1>'+e(form['title'])+'</h1><form method="post" enctype="multipart/form-data">']
+    answers=form.get('answers',{})
+    for f in form['definition']:
+        id=e(f['id']); label=e(f['label']); kind=f['kind']; val=answers.get(f['id'],''); req=' required' if f.get('required') else ''
+        parts.append('<div><label for="'+id+'">'+label+'</label> ')
+        if kind=='textarea': parts.append('<textarea id="'+id+'" name="'+id+'"'+req+'>'+e(val)+'</textarea>')
+        elif kind in ('choice','multi','yes-no'):
+            parts.append('<select id="'+id+'" name="'+id+'"'+(' multiple' if kind=='multi' else '')+req+'>')
+            if kind!='multi': parts.append('<option value="">Choose…</option>')
+            for opt in (['yes','no'] if kind=='yes-no' else f.get('options',[])):
                 selected=opt in val if isinstance(val,list) else opt==val
-                out.append('<option value="'+esc(opt)+'"'+(' selected' if selected else '')+'>'+esc(opt)+'</option>')
-            out.append('</select>')
-        else: out.append('<input id="'+id+'" name="'+id+'" type="'+('file' if k=='file' else 'text')+'"'+(' value="'+esc(val)+'"' if k!='file' else '')+req+'>')
-        if x.get('help'): out.append('<p>'+esc(x['help'])+'</p>')
-        out.append('</div>')
-    out.append('<button type="submit" name="action" value="save" formnovalidate>Save (partial)</button><button type="submit" name="action" value="submit">Submit answers</button></form></body></html>')
-    return ''.join(out).encode()
-class Handler(http.server.BaseHTTPRequestHandler):
-    def log_message(self,*a): pass
-    def handle_request(self,post=False):
+                parts.append('<option value="'+e(opt)+'"'+(' selected' if selected else '')+'>'+e(opt)+'</option>')
+            parts.append('</select>')
+        else: parts.append('<input id="'+id+'" name="'+id+'" type="'+('file' if kind=='file' else 'text')+'"'+(' value="'+e(val)+'"' if kind!='file' else '')+req+'>')
+        if f.get('help'): parts.append('<p>'+e(f['help'])+'</p>')
+        parts.append('</div>')
+    parts.append('<button type="submit" name="action" value="partial" formnovalidate>Save (partial)</button><button type="submit" name="action" value="complete">Submit answers</button></form></body></html>')
+    return ''.join(parts).encode()
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self,*args): pass
+    def do_GET(self):
+        id=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('id',[''])[0]; form=read().get(id)
+        if not form: self.send_error(404); return
+        data=page(form); self.send_response(200); self.send_header('Content-Type','text/html; charset=utf-8'); self.send_header('Content-Length',str(len(data))); self.end_headers(); self.wfile.write(data)
+    def do_POST(self):
+        import email.parser, email.policy
+        id=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('id',[''])[0]; data=read(); form=data.get(id)
+        if not form: self.send_error(404); return
+        body=self.rfile.read(int(self.headers.get('Content-Length','0'))); ct=self.headers.get('Content-Type',''); values={}
+        if ct.startswith('multipart/form-data'):
+            msg=email.parser.BytesParser(policy=email.policy.default).parsebytes(('Content-Type: '+ct+'\r\nMIME-Version: 1.0\r\n\r\n').encode()+body)
+            for part in msg.iter_parts():
+                name=part.get_param('name',header='content-disposition'); filename=part.get_filename(); v=filename if filename is not None else part.get_content()
+                if name and v: values.setdefault(name,[]).append(v)
+        else: values=urllib.parse.parse_qs(body.decode(),keep_blank_values=True)
+        answers={}
+        for f in form['definition']:
+            k=f['id']; v=values.get(k,[])
+            if f['kind']=='multi':
+                if v: answers[k]=v
+                else: form['answers'].pop(k,None)
+            elif v and v[0]!='': answers[k]=v[0]
+            elif f['kind']!='file': form['answers'].pop(k,None)
+        try: update_answers(form,answers,values.get('action',[''])[0]=='complete'); write(data)
+        except ValueError as ex: self.send_error(400,str(ex)); return
+        self.send_response(303); self.send_header('Location','/?id='+urllib.parse.quote(id)); self.end_headers()
+def serve():
+    server=HTTPServer(('127.0.0.1',0),Handler); SERVER.write_text(json.dumps({'pid':os.getpid(),'port':server.server_port}))
+    try: server.serve_forever()
+    finally:
         try:
-            q=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query); f=load(q.get('id',[''])[0]); error=''
-            if post:
-                data=urllib.parse.parse_qs(self.rfile.read(int(self.headers.get('Content-Length',0))).decode(),keep_blank_values=True)
-                vals={}
-                for x in f['definition']:
-                    v=data.get(x['id'],[])
-                    if x['kind']=='multi': vals[x['id']]=[i for i in v if i]
-                    elif v and v[0]: vals[x['id']]=v[0]
-                    else: f.get('answers',{}).pop(x['id'],None)
-                try: answers_update(f,vals,data.get('action',[''])[0]=='submit')
-                except ValueError as e: error=str(e)
-            body=render(f,error); self.send_response(200); self.send_header('Content-Type','text/html; charset=utf-8'); self.send_header('Content-Length',str(len(body))); self.end_headers(); self.wfile.write(body)
-        except (ValueError,KeyError): self.send_error(404)
-    def do_GET(self): self.handle_request()
-    def do_POST(self): self.handle_request(True)
-def main():
+            if json.loads(SERVER.read_text())['pid']==os.getpid(): SERVER.unlink()
+        except (OSError,ValueError,KeyError): pass
+def parser():
     p=argparse.ArgumentParser(prog='form'); sub=p.add_subparsers(dest='cmd',required=True)
-    def common(s): s.add_argument('--json',action='store_true'); s.add_argument('--fields')
-    a=sub.add_parser('add'); common(a)
-    for flag in ('id','def','definition','title','poll','options','close-at'): a.add_argument('--'+flag)
-    a.add_argument('--open',action='store_true'); a.add_argument('--group-required',action='store_true')
-    for cmd in ('open','show','answer','wait','set'):
-        s=sub.add_parser(cmd); s.add_argument('id'); common(s)
-        if cmd=='open': s.add_argument('--open',action='store_true')
+    for cmd in ('add','open','show','answer','wait','set','list','serve','stop'):
+        q=sub.add_parser(cmd)
+        if cmd in ('open','show','answer','wait','set'): q.add_argument('id')
+        if cmd=='add':
+            for flag in ('id','title','definition','poll','options','close-at'): q.add_argument('--'+flag)
+            q.add_argument('--def',dest='def_file'); q.add_argument('--open',action='store_true'); q.add_argument('--group-required',action='store_true')
         if cmd in ('answer','set'):
-            s.add_argument('--answer',action='append',default=[]); s.add_argument('--answers'); s.add_argument('--complete',action='store_true'); s.add_argument('--group-required',action='store_true')
-        if cmd=='wait': s.add_argument('--timeout',default='5m'); s.add_argument('--key')
-    sub.add_parser('list'); s=sub.add_parser('serve'); s.add_argument('--port',type=int)
-    args=p.parse_args()
-    if args.cmd=='serve':
-        try: chosen=args.port or int((ROOT/'port').read_text())
-        except (OSError,ValueError): chosen=0
-        try:
-            server=http.server.ThreadingHTTPServer(('127.0.0.1',chosen),Handler)
-        except OSError:
-            if args.port: raise
-            # An existing per-user server already serves these forms.
-            while True:
-                try:
-                    with socket.create_connection(('127.0.0.1',chosen),timeout=1): pass
-                except OSError: break
-                time.sleep(1)
-            server=http.server.ThreadingHTTPServer(('127.0.0.1',chosen),Handler)
-        (ROOT/'port').write_text(str(server.server_port)); server.serve_forever(); return
-    if args.cmd=='list':
-        for file in sorted(ROOT.glob('*.json')):
-            try:
-                f=json.loads(file.read_text()); print(f['id'],f['status'])
-            except (ValueError,KeyError): pass
+            q.add_argument('--answer',action='append',default=[]); q.add_argument('--answers'); q.add_argument('--complete',action='store_true'); q.add_argument('--group-required',action='store_true')
+        if cmd=='open': q.add_argument('--open',action='store_true')
+        if cmd=='wait': q.add_argument('--timeout',default='5m'); q.add_argument('--key')
+        if cmd not in ('serve','stop'):
+            q.add_argument('--json',action='store_true'); q.add_argument('--fields')
+    return p
+def main():
+    args=parser().parse_args(); cmd=args.cmd
+    if cmd=='serve': serve(); return
+    if cmd=='stop':
+        s=serverinfo()
+        if s:
+            try: os.kill(s['pid'],signal.SIGTERM)
+            except ProcessLookupError: pass
+            for _ in range(100):
+                if not serverinfo(): break
+                time.sleep(.02)
+        try: SERVER.unlink()
+        except FileNotFoundError: pass
         return
-    if args.cmd=='add':
-        if args.poll:
-            fields=[{'id':'vote','label':args.poll,'kind':'choice','options':(args.options or '').split(','),'required':True}]; title=args.poll
+    data=read()
+    if cmd=='add':
+        title,fields=definition(args); validate(fields); id=args.id or uuid.uuid4().hex
+        if id in data: raise ValueError('form already exists')
+        if args.close_at: datetime.datetime.fromisoformat(args.close_at.replace('Z','+00:00'))
+        if args.group_required: fields=sorted(fields,key=lambda f:not f.get('required',False))
+        form={'id':id,'title':args.title or title,'definition':fields,'answers':{},'status':'pending'}
+        if args.poll: form['respondents']='many'
+        if args.close_at: form['close_at']=args.close_at
+        key=uuid.uuid4().hex; data[id]=form; write(data); u=url(id)
+        out={**form,'url':u,'inviteURL':u,'ownerKey':key}
+        if args.open:
+            open_browser(u); out.update(opened=True,openedURL=u)
+        output(out,args); return
+    if cmd=='list':
+        if args.json: output({'forms':list(data.values())},args)
         else:
-            obj=definition_file(getattr(args,'def')) if getattr(args,'def') else json.loads(args.definition or '[]')
-            fields=obj if isinstance(obj,list) else obj.get('fields',[]); title='' if isinstance(obj,list) else obj.get('title','')
-        validate(fields)
-        if args.group_required: fields=sorted(fields,key=lambda x:not x.get('required'))
-        id=args.id or secrets.token_hex(8)
-        if path(id).exists(): raise ValueError('form already exists: '+id)
-        f={'id':id,'title':args.title or title,'definition':fields,'answers':{},'status':'pending','ownerKey':secrets.token_urlsafe(24),'respondents':'many' if args.poll else 'one'}
-        if args.close_at: f['close_at']=args.close_at
-        save(f); output(f,args,'add'); return
-    f=load(args.id)
-    if args.cmd in ('answer','set'):
-        vals={}
-        if args.answers: vals=json.loads(sys.stdin.read() if args.answers=='-' else Path(args.answers).read_text())
+            for f in data.values(): print(f['id'],f['status'],f['title'])
+        return
+    if args.id not in data: raise ValueError('form not found: '+args.id)
+    form=data[args.id]
+    if cmd in ('answer','set'):
+        answers={}
+        if args.answers: answers=json.load(sys.stdin if args.answers=='-' else open(args.answers))
         for item in args.answer:
-            k,v=item.split('=',1); vals[k]=v
-        answers_update(f,vals,args.complete)
-        if args.cmd=='set':
-            f['status']='filled-by-agent'
-            if args.group_required: f['definition'].sort(key=lambda x: 0 if x.get('required') and not f['answers'].get(x['id']) else 1)
-            save(f)
-    if args.cmd=='wait':
+            if '=' not in item: raise ValueError('answer must be field=value')
+            k,v=item.split('=',1); answers[k]=v
+        update_answers(form,answers,args.complete)
+        if cmd=='set': form['status']='filled-by-agent'
+        if args.group_required: form['definition'].sort(key=lambda f: 0 if f.get('required') and not form['answers'].get(f['id']) else (1 if f.get('required') else 2))
+        write(data)
+    if cmd=='wait':
         m=re.fullmatch(r'(\d+(?:\.\d+)?)(ms|s|m|h)?',args.timeout)
         if not m: raise ValueError('invalid timeout')
-        end=time.monotonic()+float(m[1])*{'ms':.001,'s':1,'m':60,'h':3600,None:1}[m[2]]
-        while f['status'] not in ('answered','closed'):
-            if time.monotonic()>=end: raise ValueError('timed out waiting for answers')
-            time.sleep(.1); f=load(args.id)
-    output(f,args,'open' if args.cmd=='open' else 'show')
+        seconds=float(m[1])*{'ms':.001,'s':1,'m':60,'h':3600,None:1}[m[2]]; end=time.monotonic()+seconds
+        while form['status'] not in ('answered','closed') and time.monotonic()<end:
+            time.sleep(min(.1,max(0,end-time.monotonic()))); form=read()[args.id]
+        if form['status'] not in ('answered','closed'): raise ValueError('timeout waiting for answers')
+    u=url(args.id)
+    out={'id':args.id,'status':form['status'],'url':u} if cmd=='open' else {**form,'url':u}
+    if cmd=='open' and args.open:
+        open_browser(u); out.update(opened=True,openedURL=u)
+    output(out,args)
 if __name__=='__main__':
     try: main()
-    except (ValueError,OSError,KeyError,json.JSONDecodeError) as e: fail(str(e))
+    except (ValueError,OSError,KeyError,TypeError,json.JSONDecodeError) as e: print('error: '+str(e),file=sys.stderr); sys.exit(1)

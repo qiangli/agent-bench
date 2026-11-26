@@ -1,6 +1,6 @@
 ---
 name: form
-description: Lifecycle of the form app when it is delivered as a spec (source, build, test, install, run, serve). Use when asked to build, test, install, run or serve form.
+description: Lifecycle of the form app when it is delivered as a spec (source, build, test, install, run, serve, stop). Use when asked to build, test, install, run, serve or stop form.
 type: dag
 default: test
 ---
@@ -69,10 +69,20 @@ printf '%s' "$ARGS" | xargs ./form
 ```
 
 ### serve
-Serve the pages of this user's forms on the loopback address, in the foreground. While it runs, the `url` of every form answers. It stops on INT or TERM.
+Serve the pages of this user's forms on the loopback address, in the foreground, for a service that something else supervises. Any server of this user that is already running is stopped first. While it runs, the `url` of every form answers. Stop it with the `stop` step.
 Effects: read, write, exec, net
 Band: unmeasured
 
 ```sh
+./form stop
 exec ./form serve
+```
+
+### stop
+Stop this user's form server, whatever started it. Exits 0 when none is running. Stored forms are kept.
+Effects: read, exec
+Band: unmeasured
+
+```sh
+./form stop
 ```

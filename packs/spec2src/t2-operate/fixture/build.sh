@@ -1,4 +1,4 @@
 #!/bin/sh
-set -e
+set -eu
 chmod +x ./form
-printf '%s\n' 'Nothing to compile.'
+printf '%s\n' 'No compilation needed.'

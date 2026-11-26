@@ -1,4 +1,5 @@
 #!/bin/sh
+# The operate task with no model: every step is the code block of dag.md, as written.
 set -eu
 cd "$1"
 unset PREFIX
@@ -25,19 +26,22 @@ step() {
 step build
 step test
 step install
-export ARGS='add --id drill-1 --def examples/contact.json --json'
-step run > answer.json
 
 script=$(block serve)
-sh -c "$script" &
+sh -c "$script" > serve.log 2>&1 &
 server=$!
-stop_server() {
-    kill -TERM "$server" 2>/dev/null || :
-    status=0
-    wait "$server" || status=$?
-    printf 'serve %s\n' "$status" >> report.txt
-}
-trap stop_server EXIT
+trap 'kill -TERM "$server" 2>/dev/null || :' EXIT
 trap 'exit 1' HUP INT TERM
+sleep 2
+kill -0 "$server"
+
+export ARGS='add --id drill-1 --def examples/contact.json --json'
+step run > answer.json
 url=$(python3 -c 'import json; print(json.load(open("answer.json"))["url"])')
 curl --noproxy '*' --fail --silent --show-error --max-time 10 --output page.html "$url"
+
+step stop
+status=0
+wait "$server" || status=$?
+printf 'serve %s\n' "$status" >> report.txt
+trap - EXIT

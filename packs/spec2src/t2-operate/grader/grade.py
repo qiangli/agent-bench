@@ -6,6 +6,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "scripts"))
@@ -77,6 +79,21 @@ def serve(page, definition):
     return "PASS", ""
 
 
+def stopped(path):
+    """After the stop step the page of the form in answer.json must not answer."""
+    try:
+        url = json.loads(path.read_text())["url"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return "FAIL", "no url in answer.json"
+    try:
+        with urllib.request.urlopen(url, timeout=3):
+            return "FAIL", "the page still answers after the stop step"
+    except urllib.error.HTTPError:
+        return "FAIL", "the page still answers after the stop step"
+    except (OSError, ValueError):
+        return "PASS", ""
+
+
 def report(path):
     try:
         statuses = {}
@@ -94,12 +111,15 @@ def grade(workspace, fixture):
     bindir = home.absolute() / ".local/bin"
     launcher = bindir / "form"
     installed = launcher.is_file() and os.access(launcher, os.X_OK)
+    # Before the contract check: the judge starts servers of its own.
+    is_stopped = stopped(workspace / "answer.json")
     checks = {
         "protected": protected(workspace, fixture),
         "install": ("PASS", "") if installed else ("FAIL", "missing executable form"),
         "contract": contract(fixture, bindir),
         "run": run_answer(workspace / "answer.json"),
         "serve": serve(workspace / "page.html", fixture / "examples/contact.json"),
+        "stopped": is_stopped,
     }
     layers = {name: status for name, (status, _) in checks.items()}
     verdict = next((v for v in ("FAIL", "INCONCLUSIVE") if v in layers.values()), "PASS")
