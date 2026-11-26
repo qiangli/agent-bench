@@ -290,6 +290,38 @@ def seed_claude_keychain(config_dir: str, protected: list[str], now: float | Non
     return ".claude/.credentials.json (keychain, no refresh token)"
 
 
+SHELL_PIN_KEYS = ("CLAUDE_CODE_SHELL", "SHELL")
+
+
+def plain_shell_settings(config_dirs: list[str]) -> list[str]:
+    """Drop the operator's shell pin from the arm's copied Claude settings.
+
+    The operator's settings.json may pin CLAUDE_CODE_SHELL to a shell whose
+    built-ins shadow a tool the task names on PATH. With BENCH_PLAIN_SHELL=1 the
+    arm copy loses that pin, so the arm runs the shell its environment names.
+    Only the arm copy is rewritten; the operator's file is never opened for writing.
+    """
+    changed = []
+    for directory in dict.fromkeys(os.path.realpath(d) for d in config_dirs):
+        path = os.path.join(directory, "settings.json")
+        if not os.path.isfile(path) or os.path.islink(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as source:
+                settings = json.load(source)
+        except (OSError, ValueError):
+            continue
+        env = settings.get("env")
+        if not isinstance(env, dict) or not any(key in env for key in SHELL_PIN_KEYS):
+            continue
+        for key in SHELL_PIN_KEYS:
+            env.pop(key, None)
+        with open(path, "w", encoding="utf-8") as target:
+            json.dump(settings, target, indent=2)
+        changed.append(f"{path} (shell pin removed, BENCH_PLAIN_SHELL=1)")
+    return changed
+
+
 def prepare(arm_dir: str, tool: str, source_home: str | None = None,
             binary: str | None = None, protected: list[str] | None = None) -> dict[str, str]:
     """Create and seed the arm HOME; return the environment the arm runs with."""
@@ -331,6 +363,8 @@ def prepare(arm_dir: str, tool: str, source_home: str | None = None,
     if (tool == "claude" and os.environ.get("BENCH_CLAUDE_KEYCHAIN") == "1"
             and not os.path.exists(os.path.join(env["CLAUDE_CONFIG_DIR"], ".credentials.json"))):
         seeded.append(seed_claude_keychain(env["CLAUDE_CONFIG_DIR"], protected))
+    if tool == "claude" and os.environ.get("BENCH_PLAIN_SHELL") == "1":
+        seeded += plain_shell_settings([os.path.join(home, ".claude"), env["CLAUDE_CONFIG_DIR"]])
     exceptions = []
     keychain_optin = ((tool in ("agy", "gemini") and os.environ.get("BENCH_AGY_KEYCHAIN") == "1")
                       or (tool == "muse" and os.environ.get("BENCH_MUSE_KEYCHAIN") == "1"))

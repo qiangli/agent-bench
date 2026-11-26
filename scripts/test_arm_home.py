@@ -222,6 +222,20 @@ class ArmHomeTest(unittest.TestCase):
         manifest = json.loads((self.arm / "arm.json").read_text())
         self.assertIn(".claude.json", manifest["seeded"])
 
+    def test_plain_shell_drops_the_shell_pin_from_the_arm_copy_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = os.path.join(tmp, ".claude")
+            os.makedirs(config)
+            path = os.path.join(config, "settings.json")
+            with open(path, "w", encoding="utf-8") as target:
+                json.dump({"env": {"CLAUDE_CODE_SHELL": "/x/sh", "SHELL": "/bin/bash", "KEEP": "1"},
+                           "model": "m"}, target)
+            changed = arm_home.plain_shell_settings([config, config])
+            self.assertEqual(len(changed), 1)
+            with open(path, encoding="utf-8") as source:
+                self.assertEqual(json.load(source), {"env": {"KEEP": "1"}, "model": "m"})
+            self.assertEqual(arm_home.plain_shell_settings([config]), [])
+
     def test_arm_dir_in_operator_home_fails_closed(self):
         with forbid_writes(self.protected) as hits:
             with self.assertRaises(arm_home.UnsafeTarget):
