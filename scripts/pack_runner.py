@@ -123,6 +123,11 @@ def validate(pack: str) -> int:
     rc = 0
     for directory in tasks:
         task = directory.name if directory != PACKS / pack else "calibration"
+        if (pack, task) == ("spec2src", "t2-operate"):
+            # The shell control needs an isolated HOME, an offline conform, and
+            # cleanup of the app's detached server. Its selfcheck owns all three.
+            rc |= int(subprocess.run([sys.executable, str(directory / "selfcheck.py")]).returncode != 0)
+            continue
         fixture, reference = directory / "fixture", directory / "reference"
         if not fixture.is_dir() or not reference.is_dir():
             print(f"FAIL {pack}/{task}: fixture or reference is missing")
