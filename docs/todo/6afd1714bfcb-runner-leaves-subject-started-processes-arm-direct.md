@@ -4,11 +4,14 @@ kind: bug
 title: runner leaves subject-started processes, arm directories and run workspaces behind after a spec2src run
 seq: 764
 status: todo
-priority: p1
+priority: p0
 labels:
     - spec2src
     - runner
 created: 2026-11-26T13:36:44.402275Z
+sprint: 731
+sprint_id: 88c254ad-f4a4-5c54-a0fd-ac469894c684
+sprint_title: Shapeware workflow standard, proven by the full trip on form
 ---
 
 Found at the cleanup of umbrella Sprint 723 (2026-11-26), after 28 scored spec2src runs, 1 smoke and about 12 probes on the session host.
