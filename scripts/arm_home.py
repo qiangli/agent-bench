@@ -331,7 +331,12 @@ def prepare(arm_dir: str, tool: str, source_home: str | None = None,
             and not os.path.exists(os.path.join(env["CLAUDE_CONFIG_DIR"], ".credentials.json"))):
         seeded.append(seed_claude_keychain(env["CLAUDE_CONFIG_DIR"], protected))
     exceptions = []
-    if tool in ("agy", "gemini") and os.environ.get("BENCH_AGY_KEYCHAIN") == "1":
+    keychain_optin = ((tool in ("agy", "gemini") and os.environ.get("BENCH_AGY_KEYCHAIN") == "1")
+                      or (tool == "muse" and os.environ.get("BENCH_MUSE_KEYCHAIN") == "1"))
+    if keychain_optin:
+        # muse keeps its Meta sign-in in the login keychain too (auth.json
+        # records storage "keychain" and holds no secret), so it takes the same
+        # recorded link, opted in with BENCH_MUSE_KEYCHAIN=1.
         # agy >= 1.5 keeps its sign-in in the macOS login keychain, found via
         # $HOME/Library/Keychains, not in .gemini/antigravity-cli: under the arm
         # HOME it reads as signed out and exits at launch. A copied keychain stays
@@ -343,7 +348,7 @@ def prepare(arm_dir: str, tool: str, source_home: str | None = None,
         if os.path.isdir(real):
             os.makedirs(os.path.join(home, "Library"), exist_ok=True)
             os.symlink(real, os.path.join(home, "Library", "Keychains"))
-            exceptions.append("Library/Keychains -> operator login keychain (BENCH_AGY_KEYCHAIN=1)")
+            exceptions.append("Library/Keychains -> operator login keychain (BENCH_%s_KEYCHAIN=1)" % ("MUSE" if tool == "muse" else "AGY"))
     if binary:
         # The vendor binary may live under the operator HOME (bashy's managed
         # tools dir); executing it is read-only, and naming it explicitly keeps
