@@ -24,7 +24,7 @@ class TaskDiscoveryTest(unittest.TestCase):
             "l5": 6,
             "skill-uptake": 10,
             "shapeware": 3,
-            "spec2src": 1,
+            "spec2src": 2,
         }
         for pack, count in expected_counts.items():
             with self.subTest(pack=pack):
