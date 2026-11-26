@@ -1,12 +1,12 @@
 # spec2src: form from its public spec
 
-`t1-form/fixture/` is the complete initial subject workspace. Its seven files
-are pinned in `task.yaml`; the five source documents are copied byte for byte
-from the pinned bashy `examples/desk/form` (spec v2.1). `dag.md` is the
-lifecycle of the app as a spec (Sprint 731): its steps run with `sh` and
-without bashy, the subject may not change it and must make its steps work
-(`build.sh`, the `serve` command). It is written here and is not the
-lifecycle file of the bashy reference build. `TASK.md` tells the
+`t1-form/fixture/` is the complete initial subject workspace: a spec release
+of `form`. Its seven files are pinned in `task.yaml`. Six are copied byte for
+byte from the pinned bashy `examples/desk/form` (spec v2.2), as that folder's
+`spec/README.md` lists them: the four spec documents, the two examples, and
+`dag.md` from `spec/dag.md`, the lifecycle of the app as a spec. Its steps run
+with `sh` and without bashy; the subject may not change it and must make its
+steps work (`build.sh`, the `serve` and `stop` commands). `TASK.md` tells the
 subject that the judge's `conform` is on its PATH, so the venue must put a
 standalone `conform` binary there. The subject writes source and an
 executable `./form` launcher. The runner starts this pack without Git metadata
