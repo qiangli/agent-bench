@@ -3,14 +3,18 @@ id: 407c6bd8df99
 kind: feature
 title: 'T2a operate drill task: fixture, mechanical grader, no-model control and selfcheck (packs/spec2src/t2-operate)'
 seq: 765
-status: todo
+status: done
 priority: p0
 labels:
     - spec2src
 created: 2026-11-26T14:41:37.61731Z
+weave: 9
+assignee: codex-gpt6.2-astra
 sprint: 731
 sprint_id: 88c254ad-f4a4-5c54-a0fd-ac469894c684
 sprint_title: Shapeware workflow standard, proven by the full trip on form
+closed: 2026-11-26T14:46:10.232296Z
+closed_by: claude-fable5.2
 ---
 
 Part of umbrella Sprint 731 story 22ae0904d5a0 (T2, the operate drill). Plan: umbrella `docs/plan-reverse-sdlc-workflow.md`, "The full trip". A subject at a low band gets a built app folder and must carry out its lifecycle steps exactly as `dag.md` writes them. This story builds the task and its mechanical grader. It runs no model.
