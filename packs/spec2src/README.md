@@ -82,3 +82,17 @@ and check and one verdict. No model. Run it on a gate lane, with `conform` on
 the PATH. Controls (2026-11-26, notepad spec v1.0): the reference passes 3 of
 3; an empty folder fails; a `build.sh` that exits 1 fails `build` alone; a
 `stop` that stops nothing fails `test`, `page-down` and `serve-exit`.
+
+## notepad from its public spec (`t3-notepad`)
+
+`t3-notepad/fixture/` is a spec release of `notepad` (spec v1.0, bashy
+`eb41d87b`, `examples/desk/notepad`): `CONTRACT.md`, `SKILL.md`,
+`features.yaml`, `examples/` and `dag.md` (from `spec/dag.md`), byte for byte
+and pinned in `task.yaml`, plus `TASK.md`. The subject delivers source, a
+`build.sh` and an executable `./notepad` launcher. The venue differs from
+`t1-form` in one point that the contract's Venue section states: `bashy` is
+on the PATH as the html and pdf converter (`bashy lens`). The grader adapter
+is the form one with the launcher name changed; the grade command is the
+private notepad grader, whose record carries the behaviour verdict and,
+apart from it, the verdict of `venue/lifecycle-notepad.sh`. Run with
+`S2S_TASK=t3-notepad venue/run.sh AGENT BATCH RUN_INDEX`.
