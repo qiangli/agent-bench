@@ -56,7 +56,8 @@ control and grader checks.
 
 - `env.sh`: the conditions every arm runs with (a plain system shell, the
   keychain opt-ins, no self-update, a frozen adapter cache, the judge on
-  PATH). It needs `S2S_HOME`, a private directory outside any source tree.
+  PATH, no-op `open` and `xdg-open` so that no build opens a browser on the
+  session host). It needs `S2S_HOME`, a private directory outside any source tree.
 - `probe.sh AGENT`: asks a binding, in a real isolated arm and without the
   task, to run `conform version`. Run it before a binding's first batch.
 - `run.sh AGENT BATCH RUN_INDEX [SEED]`: one run through the runner and the
