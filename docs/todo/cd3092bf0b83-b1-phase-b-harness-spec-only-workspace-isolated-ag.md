@@ -3,16 +3,18 @@ id: cd3092bf0b83
 kind: task
 title: 'B1 Phase B harness: spec-only workspace, isolated agent run, snapshot + grade with conform'
 seq: 763
-status: assigned
+status: done
 priority: p2
 labels:
     - conform
 created: 2026-11-25T21:22:19.575687Z
-weave: 6
+weave: 7
 assignee: codex-gpt6-sol
 sprint: 722
 sprint_id: ffc7a05d-4229-598a-8834-4c1212246274
 sprint_title: 'dhnt/conform, then: does the spec reproduce the app?'
+closed: 2026-11-26T00:20:03.279143Z
+closed_by: claude-opus5.5
 ---
 
 agent-bench pack packs/shapeware/t5-spec-to-source: setup builds a fresh workspace with only CONTRACT.md, SKILL.md, features.yaml and TASK.md (sha256 recorded); runs one subject binding with a 30 min cap; snapshots + hashes the workspace at agent end; grades the snapshot in a separate sandbox through bashy conform (visible contract, hidden cases supplied at grade time from outside the workspace, UI inventory + interactions + JSON API); writes the per-run record (verdicts per layer + accounting per protocol). Controls: reference x3, null candidate. Venue: gate host lane.
