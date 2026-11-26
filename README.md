@@ -82,6 +82,11 @@ workspace, a screen reference to this repo, a pack, a grader, a reference, a run
 log or `results.jsonl` is a hard-rule **FAIL** ("read the answer key") whatever
 the grade.
 
+On exit or interruption, the runner stops the session, saves arm evidence, and
+reaps processes tied by path to its temporary directories before removing them.
+If the evidence copy fails, the runner keeps the arm. Cleanup reports surviving
+processes and retained directories on stderr and preserves the run result.
+
 A run ends when its session exits, when both the workspace content (hashed in
 full, untracked files included) and the agent's screen have been quiet for
 `QUIET` seconds after the steer, when the workspace alone has been quiet for

@@ -133,14 +133,56 @@ scrlog() { echo "$ah/.bashy/sessions/logs/$(printf '%s' "$1" | shasum -a 256 | c
 # Wait for a session id to leave the host room: an agent is one identity, so a
 # lingering session refuses the next launch. The room is the arm's.
 gone() { for _ in $(seq 1 20); do "${guard[@]}" env "${armenv[@]}" bashy chat sessions 2>/dev/null | awk -v s="$1" 'NR > 1 && $1 == s {f = 1} END {exit !f}' || return 0; sleep 1; done; }
-# Keep an arm's raw session evidence (bashy session state, vendor transcripts;
-# never its seeded credentials) beside its record, then delete the arm HOME.
-# A failed copy keeps the arm HOME rather than lose the evidence.
+endsession() {
+  [ -n "$pid" ] || return 0
+  # End the session and make sure it is GONE before the next run. Some TUIs ask
+  # for a second Ctrl-C, hence INT twice, then TERM, then KILL.
+  for s in INT INT TERM KILL; do
+    kill -$s $pid 2>/dev/null || break
+    for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 $pid 2>/dev/null || break 2; sleep 1; done
+  done
+  [ -z "$id" ] || gone "$id"
+  pid=
+}
 armdone() {
-  [ -n "${arm:-}" ] || return 0
-  python3 scripts/arm_home.py evidence --arm-dir "$arm" --dest "${1:-$rec.arm}" \
-    && { chmod -R u+w "$arm" 2>/dev/null || true; rm -rf "$arm"; } || echo "  ARM EVIDENCE COPY FAILED: kept $arm" >&2
-  arm=
+  python3 scripts/arm_home.py evidence --arm-dir "$arm" --dest "${1:-$rec.arm}"
+}
+cleanup() {
+  [ -n "$ws$arm$pre" ] || return 0
+  # Finish the current cleanup even if the conductor signals during a copy.
+  local interrupted=0 keep= path
+  local paths=()
+  trap 'interrupted=130' INT
+  trap 'interrupted=143' TERM
+  endsession
+  if [ -n "$arm" ] && ! armdone "${2:-$rec.arm}"; then
+    echo "  ARM EVIDENCE COPY FAILED: kept $arm" >&2
+    keep=$arm
+  fi
+  case ${1:-} in
+    workspace|record) cp -R "$ws" "$rec" ;;
+  esac
+  if [ "${1:-}" = record ] && [ -d "$ws.bashy-home" ]; then
+    cp -R "$ws.bashy-home" "$rec.bashy-home"
+  fi
+  [ -z "$ws" ] || paths+=("$ws" "$ws.bashy-home")
+  [ -z "$arm" ] || paths+=("$arm")
+  [ -z "$pre" ] || paths+=("$pre")
+  python3 scripts/reap.py "${paths[@]}" || echo "  Process cleanup incomplete" >&2
+  for path in "${paths[@]}"; do
+    if [ "$path" != "$keep" ]; then
+      if [ -d "$path" ] && [ ! -L "$path" ]; then
+        chmod -R u+w "$path" 2>/dev/null || true
+      fi
+      rm -rf "$path"
+    fi
+    if [ -e "$path" ] || [ -L "$path" ]; then echo "LEFT BEHIND $path" >&2; fi
+  done
+  ws=; arm=; pre=; id=
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  [ "$interrupted" = 0 ] || exit "$interrupted"
+  return 0
 }
 specgrade() {
   env BENCH_SPEC2SRC_SNAPSHOT_PATH="$rec.snapshot.tar.gz" BENCH_SPEC2SRC_SNAPSHOT_ONLY="${1:-}" \
@@ -160,7 +202,11 @@ for d in "${TMPDIR:-/tmp}" "$ARM_ROOT"; do
   python3 scripts/arm_home.py check --path "$d" \
     || { echo "$d resolves into the operator HOME — refusing to run any arm" >&2; exit 1; }
 done
-arm=; ah=; acd=; armenv=()
+ws=; arm=; pre=; pid=; id=
+trap 'cleanup' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+ah=; acd=; armenv=()
 # BENCH_GUARD names a macOS sandbox-exec profile (scripts/guarded_live_arm.py
 # writes one: deny file-write* into the operator HOME, SIGKILL on a hit, no
 # Keychain CLI). Every isolated command of the arm — preflight lookups, trust
@@ -209,12 +255,11 @@ for i in $(seq "$first_run" "$last_run"); do
   # write-deny canary (scripts/real_home_canary.py) kills them under the real HOME.
   pre=$(mktemp -d "$ARM_ROOT/bench-pre.XXXXXX")
   preout=$(python3 scripts/arm_home.py prepare --arm-dir "$pre" --tool none) \
-    || { echo "PREFLIGHT ISOLATION FAILED $AGENT $TASK#$i — not launched" >&2; rm -rf "$ws" "$pre"; exit 1; }
+    || { echo "PREFLIGHT ISOLATION FAILED $AGENT $TASK#$i — not launched" >&2; exit 1; }
   preenv=(); while IFS= read -r l; do [ -n "$l" ] && preenv+=("$l"); done <<< "$preout"
   tool=$("${guard[@]}" env "${preenv[@]}" bashy agent show "$AGENT" --field tool)
   model=$("${guard[@]}" env "${preenv[@]}" bashy agent show "$AGENT" --field model)
   bin=$("${guard[@]}" env "${preenv[@]}" bashy tool show "$tool" --field cli.binary 2>/dev/null)
-  rm -rf "$pre"
   case $bin in */*) ;; *) bin= ;; esac  # pin a managed path; a bare name resolves on PATH
   # BENCH_TOOL_BINARY pins the vendor executable for this run (an absolute path),
   # e.g. BENCH_TOOL_BINARY=$(command -v agy). Without it bashy resolves the tool
@@ -231,7 +276,7 @@ for i in $(seq "$first_run" "$last_run"); do
   # stays functional; armdone copies the raw evidence to $rec.arm.
   arm=$(mktemp -d "$ARM_ROOT/bench-arm.XXXXXX")
   armout=$(python3 scripts/arm_home.py prepare --arm-dir "$arm" --tool "$tool" ${bin:+--binary "$bin"}) \
-    || { echo "ARM ISOLATION FAILED $AGENT $TASK#$i — not launched" >&2; rm -rf "$ws" "$arm"; exit 1; }
+    || { echo "ARM ISOLATION FAILED $AGENT $TASK#$i — not launched" >&2; exit 1; }
   armenv=(); while IFS= read -r l; do [ -n "$l" ] && armenv+=("$l"); done <<< "$armout"
   ah=$(sed -n 's/^HOME=//p' <<< "$armout")
   # Claude reads $CLAUDE_CONFIG_DIR/.claude.json (arm_home seeds it there), so
@@ -240,7 +285,7 @@ for i in $(seq "$first_run" "$last_run"); do
   acd=$(sed -n 's/^CLAUDE_CONFIG_DIR=//p' <<< "$armout")
   agh=$(sed -n 's/^GEMINI_CLI_HOME=//p' <<< "$armout")
   [ -n "$ah" ] && [ -n "$acd" ] && [ -n "$agh" ] \
-    || { echo "ARM ISOLATION INCOMPLETE $AGENT $TASK#$i — not launched" >&2; armdone; rm -rf "$ws"; exit 1; }
+    || { echo "ARM ISOLATION INCOMPLETE $AGENT $TASK#$i — not launched" >&2; exit 1; }
 
   # Claude-family tools and agy >= 1.5 gate on a per-directory trust dialog that
   # --dangerously-skip-permissions does NOT bypass. `bashy chat` launches
@@ -253,10 +298,10 @@ for i in $(seq "$first_run" "$last_run"); do
   # corrupt file backed aside, operator HOME refused).
   if [ "$("${guard[@]}" env "${armenv[@]}" bashy tool show "$tool" --field cli.launch.trust_preseed 2>/dev/null)" = .claude.json ]; then
     "${guard[@]}" python3 scripts/trust_preseed.py --workspace "$ws" --home "$acd" >/dev/null \
-      || { echo "TRUST PRESEED FAILED $AGENT $TASK#$i — not scored" >&2; armdone; rm -rf "$ws" "$ws.bashy-home"; continue; }
+      || { echo "TRUST PRESEED FAILED $AGENT $TASK#$i — not scored" >&2; cleanup; continue; }
   elif [ "$tool" = agy ]; then
     "${guard[@]}" python3 scripts/trust_preseed.py --tool agy --workspace "$ws" --home "$agh" >/dev/null \
-      || { echo "TRUST PRESEED FAILED $AGENT $TASK#$i — not scored" >&2; armdone; rm -rf "$ws" "$ws.bashy-home"; continue; }
+      || { echo "TRUST PRESEED FAILED $AGENT $TASK#$i — not scored" >&2; cleanup; continue; }
   fi
 
   # skill-uptake arm selectors (scripts/skill_arm.py; S21 paired comparison
@@ -272,7 +317,7 @@ for i in $(seq "$first_run" "$last_run"); do
   helpfmt=()
   if [ "$PACK" = skill-uptake ]; then
     hf=$("${guard[@]}" env "${armenv[@]}" python3 scripts/skill_arm.py --workspace "$ws" --tool "$tool" --arm "${SKILL:-on}" --task "$TASK") \
-      || { echo "SKILL EXPORT FAILED $AGENT $TASK#$i (arm ${SKILL:-on})" >&2; armdone; rm -rf "$ws"; exit 1; }
+      || { echo "SKILL EXPORT FAILED $AGENT $TASK#$i (arm ${SKILL:-on})" >&2; exit 1; }
     while IFS= read -r l; do [ -n "$l" ] && helpfmt+=("$l"); done <<< "$hf"
   fi
 
@@ -282,7 +327,7 @@ for i in $(seq "$first_run" "$last_run"); do
   case ${READER_VIEW:-} in
     '') ;;
     yaml|json) viewenv=("BASHY_PREFS={\"view\":\"$READER_VIEW\"}") ;;
-    *) echo "INVALID READER_VIEW $READER_VIEW" >&2; armdone; rm -rf "$ws"; exit 1 ;;
+    *) echo "INVALID READER_VIEW $READER_VIEW" >&2; exit 1 ;;
   esac
 
   # shapeware arm selector (scripts/shapeware_arm.py): binds ARM=A|B|C to its
@@ -291,14 +336,14 @@ for i in $(seq "$first_run" "$last_run"); do
   shapewareenv=()
   if [ "$PACK" = shapeware ] && { [ -n "${ARM:-}" ] || [ -n "${BASHY_BIN:-}" ]; }; then
     sw=$("${guard[@]}" env "${armenv[@]}" python3 scripts/shapeware_arm.py --arm-dir "$arm" --arm "${ARM:-C}" ${BASHY_BIN:+--bashy-bin "$BASHY_BIN"}) \
-      || { echo "SHAPEWARE ARM FAILED $AGENT $TASK#$i (arm ${ARM:-C})" >&2; armdone; rm -rf "$ws"; exit 1; }
+      || { echo "SHAPEWARE ARM FAILED $AGENT $TASK#$i (arm ${ARM:-C})" >&2; exit 1; }
     while IFS= read -r l; do [ -n "$l" ] && shapewareenv+=("$l"); done <<< "$sw"
   fi
 
   # A task with setup.py is seeded into an isolated store beside the workspace;
   # the agent is launched with that store's environment (see packs/floor/inbox-find).
   iso=$("${guard[@]}" env "${armenv[@]}" ${shapewareenv[@]+"${shapewareenv[@]}"} python3 scripts/pack_runner.py isolate --pack "$PACK" --task "$TASK" --workspace "$ws" --agent "$AGENT") \
-    || { echo "SETUP FAILED $AGENT $TASK#$i" >&2; armdone; exit 1; }
+    || { echo "SETUP FAILED $AGENT $TASK#$i" >&2; exit 1; }
   isoenv=(); while IFS= read -r l; do [ -n "$l" ] && isoenv+=("$l"); done <<< "$iso"
 
   # Only the zero-quota dry-run agent may see the reference solution.
@@ -364,14 +409,10 @@ for i in $(seq "$first_run" "$last_run"); do
     if [ "$PACK" = spec2src ]; then
       g=$(specgrade "launch failed" 2>&1 | tail -1)
       grade.record "$RUNS/results.jsonl" "$AGENT" "$PACK/$TASK" "$i" "$el" launch-failed "$steered" "$g"
-      cp -R "$ws" "$rec"
-      armdone
-      rm -rf "$ws" "$ws.bashy-home"
+      cleanup workspace
       exit 3
     fi
-    rm -rf "$ws" "$ws.bashy-home"
-    gone "$id"
-    armdone "$rec.launch$attempt.arm"
+    cleanup "" "$rec.launch$attempt.arm"
     [ "$attempt" = "$ATTEMPTS" ] && exit 1
     continue
   fi
@@ -382,13 +423,7 @@ for i in $(seq "$first_run" "$last_run"); do
     scr=$(scrlog "$id")
     [ -f "$scr" ] && cp "$scr" "$rec.screen.log"
   fi
-  # End the session and make sure it is GONE before the next run. Some TUIs ask
-  # for a second Ctrl-C, hence INT twice, then TERM, then KILL.
-  for s in INT INT TERM KILL; do
-    kill -$s $pid 2>/dev/null || break
-    for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 $pid 2>/dev/null || break 2; sleep 1; done
-  done
-  gone "$id"
+  endsession
   agent_secs=$(( $(date +%s) - start ))
 
   # Keep the agent's screen, and VOID the run if the provider refused to work
@@ -411,7 +446,7 @@ for i in $(seq "$first_run" "$last_run"); do
         "{\"points\": 0, \"fail\": false, \"void\": true, \"why\": \"void: provider refused ($void)\"}"
     fi
     echo "  VOID $AGENT $TASK#$i: provider refused ($void) — stopping this agent's bench" >&2
-    cp -R "$ws" "$rec"; rm -rf "$ws" "$ws.bashy-home"; armdone
+    cleanup workspace
     exit 3
   fi
   if [ "$PACK" = spec2src ]; then
@@ -433,10 +468,7 @@ for i in $(seq "$first_run" "$last_run"); do
     fi
   fi
   grade.record "$RUNS/results.jsonl" "$AGENT" "$PACK/$TASK" "$i" "${agent_secs:-$(( $(date +%s) - start ))}" "$why" "$steered" "$g"
-  cp -R "$ws" "$rec"
-  [ -d "$ws.bashy-home" ] && cp -R "$ws.bashy-home" "$rec.bashy-home"
-  rm -rf "$ws" "$ws.bashy-home"
-  armdone
+  cleanup record
   break
  done
 done
