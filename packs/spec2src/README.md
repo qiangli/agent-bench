@@ -68,3 +68,17 @@ control and grader checks.
 
 The full procedure, with the traps, is the umbrella kb runbook
 `spec-to-source-drill`.
+
+## Lifecycle end-to-end test (notepad)
+
+`venue/lifecycle-notepad.sh SPEC_DAG FOLDER [REPORT]` runs every step of the
+spec's `dag.md` on a fresh copy of FOLDER with a fresh HOME (`build`, `test`,
+`install`, `serve`, `run`, `stop`) and checks the service around them: the
+health endpoint answers, the installed command reads a note back, the note's
+page answers 200, and after `stop` nothing answers and the serve process has
+ended. The step text always comes from SPEC_DAG, never from the folder. Every
+step runs even after a failure; the report has one `NAME STATUS` line per step
+and check and one verdict. No model. Run it on a gate lane, with `conform` on
+the PATH. Controls (2026-11-26, notepad spec v1.0): the reference passes 3 of
+3; an empty folder fails; a `build.sh` that exits 1 fails `build` alone; a
+`stop` that stops nothing fails `test`, `page-down` and `serve-exit`.
