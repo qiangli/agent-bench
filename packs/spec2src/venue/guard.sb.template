@@ -1,0 +1,13 @@
+(version 1)
+(allow default)
+; spec2src integrity: the spec in the workspace is the only source a subject may read.
+; Replace @HOME@ (the operator home), @S2S_HOME@ (the private drill directory) and
+; @BENCH@ (this agent-bench checkout) with absolute paths, and add one deny line per
+; source tree that holds the reference app or the private cases.
+(deny file-read* (subpath "@HOME@/projects"))
+(deny file-read* (subpath "@S2S_HOME@"))
+(allow file-read* (subpath "@S2S_HOME@/adapters"))
+(allow file-read* (subpath "@S2S_HOME@/tools"))
+(deny file-write* (subpath "@HOME@") (subpath "/opt/homebrew") (subpath "/usr/local"))
+(allow file-write* (subpath "@S2S_HOME@/runs"))
+(allow file-read* (subpath "@BENCH@"))

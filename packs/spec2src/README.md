@@ -33,3 +33,21 @@ For the fixed protocol, schedule one cell at a time with `K=1` and
 `SPEC2SRC_BATCH_SEED` on each call so the run row retains the order seed.
 `bashy dag bench PACK=spec2src` remains available for ordinary sequential
 pack runs.
+
+## Running a drill (`venue/`)
+
+`venue/` holds the fixed conditions of a drill, as used in Sprint 723:
+
+- `env.sh`: the conditions every arm runs with (a plain system shell, the
+  keychain opt-ins, no self-update, a frozen adapter cache, the judge on
+  PATH). It needs `S2S_HOME`, a private directory outside any source tree.
+- `probe.sh AGENT`: asks a binding, in a real isolated arm and without the
+  task, to run `conform version`. Run it before a binding's first batch.
+- `run.sh AGENT BATCH RUN_INDEX [SEED]`: one run through the runner and the
+  private grade command (`S2S_GRADE_CMD`), with the quiet-workspace cutoff
+  equal to the wall-time cap.
+- `guard.sb.template`: the sandbox profile to fill in and save as
+  `$S2S_HOME/guard.sb`.
+
+The full procedure, with the traps, is the umbrella kb runbook
+`spec-to-source-drill`.
