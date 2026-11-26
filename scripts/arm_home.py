@@ -73,7 +73,8 @@ TOOL_SEEDS["gemini"] = TOOL_SEEDS["agy"]
 # .bashy/quota holds the vendor status line's per-arm quota capture (Claude
 # runs `bashy model quota capture` from its status line): usage evidence.
 EVIDENCE = [
-    ".bashy/sessions", ".bashy/room", ".bashy/exec", ".bashy/quota", ".claude/projects", ".codex/sessions", ".local/share/opencode/storage",
+    ".bashy/sessions", ".bashy/room", ".bashy/exec", ".bashy/quota", ".claude/projects", ".codex/sessions", ".local/share/opencode/storage", ".local/share/opencode/opencode.db",
+    ".local/share/opencode/opencode.db-wal", ".local/share/opencode/opencode.db-shm",
     ".gemini/tmp", ".gemini/antigravity-cli/conversations", ".gemini/antigravity-cli/log",
     ".local/share/opencode/log", ".bashy/ycode/harness/sessions", ".bashy/ycode/harness/payloads",
 ]
