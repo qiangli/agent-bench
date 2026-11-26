@@ -11,12 +11,13 @@ reference: reference/
 budget: {max_runtime: 30m}
 source:
   repository: bashy
-  umbrella_pin: 19ea2b4a861e9d0cd1d7260e327e72a7139c427a
+  umbrella_pin: 852a503b57db7237b39098cb81acdb8b4e424d31
   directory: examples/desk/form
 sha256:
-  CONTRACT.md: ae30df1a5d9bf392521ac8856b46c4b33a1b97c560b3a4e5dcde0c0284f55ae3
+  CONTRACT.md: 50fc5bd76199390c03f22c81a757f982ba28b338d988ef7a713a27759ae06b30
   SKILL.md: 587de0d0ff7f61f2f50178d1929c2366e868c5a93b09b33c19dd4f5bf9eabe03
-  features.yaml: f0fb4879b2f8269f9de71afdcb2d175c4dec7adb6495d35b95bb44b7221b6c03
+  features.yaml: be330a7a9d13718069cf778d43333c1ca21c3c01c5504d613b5b3658524951f8
   examples/contact.json: 1f32d364c010d5f2f3acdbb4fac93e7c55a80ac9fde62f0fa04cec042501993d
   examples/contact.yaml: 3b38db8d627cf6774eb8869c4d5132d32def862732763d838a4fa397eb544e7e
-  TASK.md: 8930a09ed2134c0d2d07dfe8c8ab97777031b871144cb84cac55d46f1b0cacb2
+  TASK.md: 105009067f2f88c336a4cc27401618b8a353acb55db59d9ae0237917d6fa7576
+  dag.md: a7a3d74d2fc86c3e083413113b7dec8dc50ec5aeb24f21f5f31609e3c8cd5ace
