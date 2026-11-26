@@ -69,7 +69,7 @@ printf '%s' "$ARGS" | xargs ./form
 ```
 
 ### serve
-Serve the pages of this user's forms on the loopback address, in the foreground. While it runs, the `url` of every form answers. It stops on INT or TERM and then exits 0.
+Serve the pages of this user's forms on the loopback address, in the foreground. While it runs, the `url` of every form answers. It stops on INT or TERM.
 Effects: read, write, exec, net
 Band: unmeasured
 
